@@ -1,0 +1,21 @@
+# Roadmap
+- [ ] Salvar cartão por usuário com autorização, sem armazenar número completo ou CVV — bloqueado até confirmar liberação da tokenização em produção pelo Asaas e um fluxo seguro de cadastro do cartão.
+- [x] Cadastro de entregadores
+- [x] Taxa de entrega: R$ 2/km em qualquer distância
+- [x] Endereço do cliente no cadastro + frete calculado automaticamente no checkout
+- [x] Menu por perfil (cliente/loja/entregador/admin)
+- [x] Só entrega; grátis até 3 km com equipe própria; aba Meus entregadores
+- [x] Aprovação manual de entregadores (admin)
+- [x] PWA: manifesto, ícones, assetlinks (falta SHA-256 do Play Console)
+- [x] Promoções De/Por com dias fixos; busca de produtos; banners; avaliações; linha do tempo
+- [x] PIN de entrega; pausa 15/30/60; modo chuva; alerta sonoro; aviso no navegador; comanda 80 mm; WhatsApp com rota
+- [x] Envio de CNH/CRLV (foto/PDF) com armazenamento privado
+- [x] Upload de foto do produto pelo celular
+- [x] Opcionais/adicionais por produto
+- [x] Recomendações ("mais pedidos")
+- [x] Chat interno cliente–loja
+- [x] Rastreamento GPS ao vivo no mapa
+- [x] Repasses Pix via Asaas (painel admin)
+
+- [x] Push no celular com app fechado (Firebase)
+- [x] Comissão 1+0x0p+0xa Asaas
