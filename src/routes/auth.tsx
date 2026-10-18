@@ -3,7 +3,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,11 +37,9 @@ function AuthPage() {
 
   async function google() {
     localStorage.setItem("achadao_after_login", dest);
-    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (r.error) { localStorage.removeItem("achadao_after_login"); toast.error("Não foi possível entrar com Google"); return; }
-    if (r.redirected) return;
-    localStorage.removeItem("achadao_after_login");
-    navigate({ to: dest });
+    // Redirects to Google; on return, __root's SIGNED_IN handler sends the user to `dest`.
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+    if (error) { localStorage.removeItem("achadao_after_login"); toast.error("Não foi possível entrar com Google"); }
   }
 
   async function forgot() {

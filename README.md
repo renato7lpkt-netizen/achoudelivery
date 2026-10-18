@@ -1,29 +1,23 @@
-# Welcome to your Lovable project
+# AchouDelivery
 
-This project was built with [Lovable](https://lovable.dev).
+Marketplace de delivery (TanStack Start + React 19 + Tailwind v4 + Supabase + Asaas).
 
-## Build with Lovable
+## Desenvolvimento
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+```bash
+npm install
+cp .env.example .env   # preencha os valores
+npm run dev            # http://localhost:8080
 ```
 
-## Built with
+## Produção (Node.js — ex.: Hostinger)
 
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
+```bash
+npm run build          # gera .output/ (preset nitro node-server)
+npm start              # node .output/server/index.mjs  (usa PORT, padrão 3000)
+```
+
+As variáveis `VITE_*` são embutidas no build: precisam existir no ambiente **antes** do `npm run build`.
+As demais são lidas em tempo de execução pelo servidor. Veja `.env.example`.
+
+Outros scripts: `npm run lint`, `npm test`, `npm run format`.

@@ -1,13 +1,7 @@
-<!-- LOVABLE:BEGIN -->
-> [!IMPORTANT]
-> This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
-> published git history — force pushing, or rebasing/amending/squashing commits
-> that are already pushed — as it rewrites history on Lovable's side and the
-> user will likely lose their project history.
->
-> Commits you push to the connected branch sync back to Lovable and show up in
-> the editor, so keep the branch in a working state.
-<!-- LOVABLE:END -->
+## Hosting
+- No longer connected to Lovable. Deployed as a standalone Node.js server (Hostinger): `npm run build` → `npm start` (`node .output/server/index.mjs`), nitro preset `node-server` in `vite.config.ts`.
+- `VITE_*` env vars are inlined at build time; everything else is read at runtime. Template: `.env.example`.
+- Google login uses `supabase.auth.signInWithOAuth` (provider must be enabled in Supabase Auth); push uses FCM HTTP v1 directly with `FIREBASE_SERVICE_ACCOUNT` (`src/lib/push.server.ts`).
 
 ## Marketplace rules
 - Order totals, delivery fee and Asaas split are computed only in `createOrder` server fn (orders have no client INSERT grant) — prevents price tampering.
