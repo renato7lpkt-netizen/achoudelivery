@@ -4,6 +4,13 @@ function base() {
   return { key, url };
 }
 
+/** Asaas answered with an error status, so the request definitely did not take effect. */
+export class AsaasError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 export async function asaas<T = any>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const { key, url } = base();
   if (!key) throw new Error("Pagamento indisponível: chave Asaas ausente.");
@@ -16,7 +23,7 @@ export async function asaas<T = any>(path: string, init?: { method?: string; bod
   if (!res.ok) {
     console.error("Asaas error", path, res.status, JSON.stringify(json));
     const msg = json?.errors?.[0]?.description ?? "Erro ao comunicar com o Asaas";
-    throw new Error(msg);
+    throw new AsaasError(msg, res.status);
   }
   return json as T;
 }

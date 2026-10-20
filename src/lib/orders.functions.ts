@@ -72,7 +72,12 @@ export const createOrder = createServerFn({ method: "POST" })
       })
       .select("id").single();
     if (error || !order) throw new Error("Não foi possível criar o pedido");
-    await supabaseAdmin.from("order_items").insert(lines.map((l) => ({ ...l, order_id: order.id })));
+    const { error: itemsError } = await supabaseAdmin.from("order_items").insert(lines.map((l) => ({ ...l, order_id: order.id })));
+    if (itemsError) {
+      console.error("order_items insert failed", order.id, itemsError);
+      await supabaseAdmin.from("orders").update({ status: "cancelado", payment_status: "ERROR" }).eq("id", order.id);
+      throw new Error("Não foi possível criar o pedido");
+    }
 
     try {
       const found = await asaas<{ data: { id: string }[] }>(`/customers?cpfCnpj=${data.cpf}`);
@@ -118,13 +123,18 @@ export const refreshPayment = createServerFn({ method: "POST" })
 export async function applyPaymentStatus(admin: any, orderId: string, status: string) {
   const paid = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(status);
   const failed = ["OVERDUE", "REFUNDED", "CHARGEBACK_REQUESTED", "DELETED"].includes(status);
-  const patch: Record<string, string> = { payment_status: status };
-  const { data: cur } = await admin.from("orders").select("status").eq("id", orderId).single();
-  if (paid && cur?.status === "aguardando_pagamento") patch["status"] = "pago";
-  if (failed && cur?.status === "aguardando_pagamento") patch["status"] = "cancelado";
-  await admin.from("orders").update(patch).eq("id", orderId);
-  if (patch["status"] === "pago") {
-    const { notifyStoreNewOrder } = await import("@/lib/push.server");
-    await notifyStoreNewOrder(admin, orderId);
+  const next = paid ? "pago" : failed ? "cancelado" : null;
+  // Conditional transition: when webhook and manual refresh race, only one call wins and notifies the store.
+  const { data: moved } = next
+    ? await admin.from("orders").update({ payment_status: status, status: next }).eq("id", orderId).eq("status", "aguardando_pagamento").select("id")
+    : { data: [] };
+  if (!moved?.length) await admin.from("orders").update({ payment_status: status }).eq("id", orderId);
+  if (next === "pago" && moved?.length) {
+    try {
+      const { notifyStoreNewOrder } = await import("@/lib/push.server");
+      await notifyStoreNewOrder(admin, orderId);
+    } catch (e) {
+      console.error("notifyStoreNewOrder failed", orderId, e);
+    }
   }
 }
