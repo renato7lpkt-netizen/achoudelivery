@@ -10,7 +10,6 @@ import { printTicket, whatsappRoute } from "@/lib/order-tools";
 import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { PushButton } from "@/components/PushButton";
-import { AppDownload } from "@/components/AppDownload";
 import { notifyOrderStatus } from "@/lib/push.functions";
 import { ShareLocation } from "@/components/LiveTracking";
 import { compressImage } from "@/lib/image";
@@ -264,7 +263,6 @@ function Orders({ store }: { store: Store }) {
     <div className="mt-4 space-y-3">
       <NotifyButton />
       <PushButton label="Avisos de pedido no celular" />
-      <AppDownload compact />
       {pending > 0 && <p className="flex animate-pulse items-center gap-2 rounded-xl bg-primary p-3 font-bold text-primary-foreground"><BellRing className="h-5 w-5" />{pending} pedido(s) aguardando você aceitar</p>}
       {data?.map((o) => (
         <div key={o.id} className="rounded-2xl border bg-card p-4">

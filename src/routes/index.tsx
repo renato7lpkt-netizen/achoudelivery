@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { MapPin, Clock, Bike, Search, Star, Zap } from "lucide-react";
 import { Banners } from "@/components/Banners";
-import { AppDownload } from "@/components/AppDownload";
 import { storesQuery } from "@/lib/queries";
 import { CATEGORIES, CITY_CENTER, FREE_KM_OWN, brl, deliveryFee, effectivePrice, etaMin, haversineKm, isOpenNow, isStorePaused, todayHours } from "@/lib/market";
 import { supabase } from "@/integrations/supabase/client";
@@ -88,7 +87,6 @@ function Vitrine() {
 
       <section className="mx-auto max-w-6xl px-4 py-6">
         <Banners />
-        <AppDownload />
         <div className="flex flex-wrap items-center gap-2">
           <Chip active={!cat} onClick={() => setCat(null)}>Todas</Chip>
           {CATEGORIES.map((c) => <Chip key={c} active={cat === c} onClick={() => setCat(c)}>{c}</Chip>)}
