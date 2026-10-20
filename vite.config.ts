@@ -18,7 +18,22 @@ export default defineConfig({
         client: { files: ["**/server/**"], specifiers: ["server-only"] },
       },
     }),
-    nitro({ preset: "node-server" }),
+    nitro({
+      preset: "node-server",
+      routeRules: {
+        "/**": {
+          headers: {
+            "Strict-Transport-Security": "max-age=31536000",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "Content-Security-Policy": "frame-ancestors 'none'",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            // Geolocation is used for delivery address and live courier tracking.
+            "Permissions-Policy": "geolocation=(self), camera=(), microphone=(), payment=()",
+          },
+        },
+      },
+    }),
     viteReact(),
   ],
   resolve: {
