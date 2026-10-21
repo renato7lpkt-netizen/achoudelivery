@@ -1,3 +1,4 @@
+import { useMyOrderPins } from "@/lib/pins";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,8 +13,9 @@ function MyOrders() {
   const { user } = Route.useRouteContext();
   const { data } = useQuery({
     queryKey: ["my-orders", user.id],
-    queryFn: async () => (await supabase.from("orders").select("id,status,total,created_at,delivery_pin,stores(name)").eq("customer_id", user.id).order("created_at", { ascending: false })).data ?? [],
+    queryFn: async () => (await supabase.from("orders").select("id,status,total,created_at,stores(name)").eq("customer_id", user.id).order("created_at", { ascending: false })).data ?? [],
   });
+  const { data: pins } = useMyOrderPins();
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="text-3xl font-extrabold">Meus pedidos</h1>
@@ -24,8 +26,8 @@ function MyOrders() {
             <div><p className="font-semibold">{o.stores?.name}</p><p className="text-sm text-muted-foreground">{new Date(o.created_at).toLocaleString("pt-BR")} · {ORDER_STATUS[o.status]}</p></div>
             <div className="text-right">
               <span className="font-bold">{brl(Number(o.total))}</span>
-              {o.delivery_pin && ["pago", "preparando", "saiu_entrega"].includes(o.status) && (
-                <p className="mt-1 rounded-lg bg-primary px-2 py-1 text-xs font-bold text-primary-foreground">PIN <span className="font-display text-base tracking-widest">{o.delivery_pin}</span></p>
+              {pins?.get(o.id) && ["pago", "preparando", "saiu_entrega"].includes(o.status) && (
+                <p className="mt-1 rounded-lg bg-primary px-2 py-1 text-xs font-bold text-primary-foreground">PIN <span className="font-display text-base tracking-widest">{pins.get(o.id)}</span></p>
               )}
             </div>
           </Link>

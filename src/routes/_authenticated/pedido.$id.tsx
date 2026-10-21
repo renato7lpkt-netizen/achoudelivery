@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { PushButton } from "@/components/PushButton";
 import { LiveMap } from "@/components/LiveTracking";
+import { ORDER_COLS } from "@/lib/columns";
+import { useMyOrderPins } from "@/lib/pins";
 
 export const Route = createFileRoute("/_authenticated/pedido/$id")({
   head: () => ({ meta: [{ title: "Seu pedido — AchouDelivery" }, { name: "description", content: "Acompanhe o status do seu pedido." }, { property: "og:title", content: "Seu pedido — AchouDelivery" }, { property: "og:description", content: "Status do pedido." }] }),
@@ -24,7 +26,7 @@ function OrderPage() {
   const refresh = useServerFn(refreshPayment);
   const { data: o } = useQuery({
     queryKey: ["order", id],
-    queryFn: async () => (await supabase.from("orders").select("*, order_items(*), stores(name,slug,address)").eq("id", id).single()).data,
+    queryFn: async () => (await supabase.from("orders").select(`${ORDER_COLS},order_items(*),stores(name,slug,address)` as const).eq("id", id).single()).data,
   });
   useEffect(() => {
     const ch = supabase.channel(`order-${id}`)
@@ -33,7 +35,9 @@ function OrderPage() {
     return () => { supabase.removeChannel(ch); };
   }, [id, qc]);
 
+  const { data: pins } = useMyOrderPins(!!o);
   if (!o) return <main className="p-16 text-center text-muted-foreground">Carregando…</main>;
+  const pin = pins?.get(o.id);
   const waiting = o.status === "aguardando_pagamento";
 
   return (
@@ -41,10 +45,10 @@ function OrderPage() {
       <p className="text-sm text-muted-foreground">Pedido #{o.id.slice(0, 8)} · {o.stores?.name}</p>
       <h1 className="mt-1 text-3xl font-extrabold">{ORDER_STATUS[o.status] ?? o.status}</h1>
       <Timeline status={o.status} createdAt={o.created_at} deliveredAt={o.delivered_at} />
-      {o.delivery_pin && ["pago", "preparando", "saiu_entrega"].includes(o.status) && (
+      {pin && ["pago", "preparando", "saiu_entrega"].includes(o.status) && (
         <div className="mt-6 flex items-center gap-4 rounded-2xl border-2 border-primary bg-accent p-4">
           <KeyRound className="h-8 w-8 text-primary" />
-          <div><p className="text-sm font-semibold">Código de entrega</p><p className="font-display text-3xl font-extrabold tracking-[0.3em]">{o.delivery_pin}</p>
+          <div><p className="text-sm font-semibold">Código de entrega</p><p className="font-display text-3xl font-extrabold tracking-[0.3em]">{pin}</p>
             <p className="text-xs text-muted-foreground">Informe ao entregador somente quando receber o pedido.</p></div>
         </div>
       )}

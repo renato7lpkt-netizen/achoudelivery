@@ -15,6 +15,7 @@ import { ShareLocation } from "@/components/LiveTracking";
 import { compressImage, squareImage } from "@/lib/image";
 import { locateMe } from "@/lib/locate";
 import { GeoNote } from "@/components/GeoNote";
+import { ORDER_COLS, STORE_COLS } from "@/lib/columns";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +33,8 @@ function Painel() {
   const { user } = Route.useRouteContext();
   const { data: store, isLoading } = useQuery({
     queryKey: ["my-store", user.id],
-    queryFn: async () => (await supabase.from("stores").select("*").eq("owner_id", user.id).maybeSingle()).data,
+    // Payout fields are not readable here (migration 0014); the owner gets them from useStorePix.
+    queryFn: async () => (await supabase.from("stores").select(STORE_COLS).eq("owner_id", user.id).maybeSingle()).data as Store | null,
   });
   if (isLoading) return <main className="p-16 text-center text-muted-foreground">Carregando…</main>;
   if (!store) return <CreateStore userId={user.id} />;
@@ -43,7 +45,7 @@ function Painel() {
           <Link to="/loja/$slug" params={{ slug: store.slug }} className="text-sm text-primary underline">Ver página da loja</Link></div>
         <PauseToggle store={store} />
       </div>
-      {!store.pix_key && <p className="mt-4 rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Cadastre sua chave Pix na aba "Recebimento" para receber o repasse mensal das vendas.</p>}
+      <PixReminder storeId={store.id} />
       <Tabs defaultValue="pedidos" className="mt-6">
         <TabsList className="h-auto flex-wrap"><TabsTrigger value="recebimento">Recebimento</TabsTrigger><TabsTrigger value="pedidos">Pedidos</TabsTrigger><TabsTrigger value="produtos">Produtos</TabsTrigger><TabsTrigger value="loja">Loja e entrega</TabsTrigger><TabsTrigger value="horarios">Horários</TabsTrigger><TabsTrigger value="equipe">Meus entregadores</TabsTrigger><TabsTrigger value="dados">Dados cadastrais</TabsTrigger></TabsList>
         <TabsContent value="recebimento"><Payout store={store} /></TabsContent>
@@ -246,7 +248,7 @@ const NEXT: Record<string, { label: string; to: string }[]> = {
 function Orders({ store }: { store: Store }) {
   const qc = useQueryClient();
   const key = ["store-orders", store.id];
-  const { data } = useQuery({ queryKey: key, queryFn: async () => (await supabase.from("orders").select("*, order_items(*)").eq("store_id", store.id).order("created_at", { ascending: false }).limit(100)).data ?? [] });
+  const { data } = useQuery({ queryKey: key, queryFn: async () => (await supabase.from("orders").select(`${ORDER_COLS},order_items(*)` as const).eq("store_id", store.id).order("created_at", { ascending: false }).limit(100)).data ?? [] });
   useEffect(() => {
     const ch = supabase.channel(`orders-${store.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `store_id=eq.${store.id}` }, (p) => {
@@ -492,17 +494,36 @@ function Settings({ store }: { store: Store }) {
   );
 }
 
+/** The store's own Pix key, readable only by its owner through the my_store_pix RPC. */
+function useStorePix(storeId: string) {
+  return useQuery({
+    queryKey: ["my-store-pix", storeId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("my_store_pix", { _store: storeId });
+      if (error) throw error;
+      return data?.[0] ?? { pix_key_type: null, pix_key: null };
+    },
+  });
+}
+
+function PixReminder({ storeId }: { storeId: string }) {
+  const { data } = useStorePix(storeId);
+  if (!data || data.pix_key) return null;
+  return <p className="mt-4 rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Cadastre sua chave Pix na aba "Recebimento" para receber o repasse mensal das vendas.</p>;
+}
+
 function Payout({ store }: { store: Store }) {
   const qc = useQueryClient();
-  const [type, setType] = useState(store.pix_key_type ?? "");
-  const [key, setKey] = useState(store.pix_key ?? "");
-  useEffect(() => { setType(store.pix_key_type ?? ""); setKey(store.pix_key ?? ""); }, [store]);
+  const { data: pix } = useStorePix(store.id);
+  const [type, setType] = useState("");
+  const [key, setKey] = useState("");
+  useEffect(() => { setType(pix?.pix_key_type ?? ""); setKey(pix?.pix_key ?? ""); }, [pix]);
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!type || key.trim().length < 3) { toast.error("Escolha o tipo e informe a chave Pix"); return; }
     const { error } = await supabase.from("stores").update({ pix_key_type: type, pix_key: key.trim() }).eq("id", store.id);
     if (error) { toast.error("Erro ao salvar"); return; }
-    qc.invalidateQueries({ queryKey: ["my-store"] }); toast.success("Chave Pix atualizada");
+    qc.invalidateQueries({ queryKey: ["my-store-pix", store.id] }); toast.success("Chave Pix atualizada");
   }
   return (
     <form onSubmit={save} className="mt-4 grid max-w-xl gap-4 rounded-2xl border bg-card p-5">

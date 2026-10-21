@@ -757,6 +757,11 @@ export type Database = {
           vehicle: string
         }[]
       }
+      my_order_pins: { Args: never; Returns: { order_id: string; pin: string }[] }
+      my_store_pix: {
+        Args: { _store: string }
+        Returns: { pix_key: string; pix_key_type: string }[]
+      }
       my_courier_id: { Args: never; Returns: string }
       open_deliveries: {
         Args: { _lat: number; _lng: number }

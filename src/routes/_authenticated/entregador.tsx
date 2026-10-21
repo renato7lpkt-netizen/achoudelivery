@@ -6,6 +6,7 @@ import { MapPin, Phone, Navigation, Store, Bike, RefreshCw, Loader2 } from "luci
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { CITY_CENTER, ORDER_STATUS, brl } from "@/lib/market";
+import { ORDER_COLS } from "@/lib/columns";
 import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { ShareLocation } from "@/components/LiveTracking";
@@ -106,7 +107,7 @@ function Deliveries({ courier }: { courier: Courier }) {
   const key = ["courier-orders", courier.id];
   const { data } = useQuery({
     queryKey: key,
-    queryFn: async () => (await supabase.from("orders").select("*, order_items(*), stores(name,address,phone,lat,lng)").eq("courier_id", courier.id).order("created_at", { ascending: false }).limit(50)).data ?? [],
+    queryFn: async () => (await supabase.from("orders").select(`${ORDER_COLS},order_items(*),stores(name,address,phone,lat,lng)` as const).eq("courier_id", courier.id).order("created_at", { ascending: false }).limit(50)).data ?? [],
   });
   useEffect(() => {
     const ch = supabase.channel(`courier-${courier.id}`)
