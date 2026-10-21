@@ -114,28 +114,51 @@ export const ORDER_STATUS: Record<string, string> = {
 };
 
 type LatLng = { lat: number; lng: number };
+/** A geocoding result plus what it matched, so the UI can show "Rua X, Bairro" and flag neighbourhood-only hits. */
+export type GeoHit = LatLng & { label: string; approx: boolean };
 
 /** Only accept hits inside the delivery city, so a same-named street elsewhere is never used. */
 const inCity = (p: LatLng) => haversineKm(CITY_CENTER, p) <= 30;
 
-async function nominatim(text: string): Promise<LatLng | null> {
+async function nominatim(text: string): Promise<GeoHit | null> {
   const q = encodeURIComponent(`${text}, Sete Lagoas, MG, Brasil`);
-  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${q}`);
-  const j = (await res.json()) as Array<{ lat: string; lon: string }>;
-  const p = j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon) } : null;
-  return p && inCity(p) ? p : null;
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=br&q=${q}`);
+  const j = (await res.json()) as Array<{ lat: string; lon: string; class: string; address?: { road?: string; house_number?: string; suburb?: string; neighbourhood?: string } }>;
+  const r = j[0];
+  if (!r) return null;
+  const p = { lat: Number(r.lat), lng: Number(r.lon) };
+  if (!inCity(p)) return null;
+  const a = r.address ?? {};
+  const bairro = a.suburb ?? a.neighbourhood;
+  // A street or building is precise enough; a bare neighbourhood/city centroid is not.
+  const street = r.class === "highway" || r.class === "building" || !!a.road;
+  return { ...p, label: [a.road, a.house_number, bairro].filter(Boolean).join(", ") || text, approx: !street };
 }
 
 // Typo-tolerant search: finds "Rua Claudionor de Castro Bahia" when the map says "Rua Doutor Claudionor de Castro Bahia".
-async function photon(text: string): Promise<LatLng | null> {
+async function photon(text: string): Promise<GeoHit | null> {
   const q = encodeURIComponent(`${text} Sete Lagoas`);
   const res = await fetch(`https://photon.komoot.io/api/?q=${q}&limit=5&lat=${CITY_CENTER.lat}&lon=${CITY_CENTER.lng}`);
-  const j = (await res.json()) as { features: Array<{ geometry: { coordinates: [number, number] }; properties: { city?: string } }> };
+  const j = (await res.json()) as { features: Array<{ geometry: { coordinates: [number, number] }; properties: { city?: string; name?: string; street?: string; housenumber?: string; district?: string; type?: string } }> };
   for (const f of j.features ?? []) {
     const p = { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
-    if (f.properties.city === "Sete Lagoas" && inCity(p)) return p;
+    const pr = f.properties;
+    if (pr.city !== "Sete Lagoas" || !inCity(p)) continue;
+    const street = pr.type === "street" || pr.type === "house" || !!pr.street;
+    return { ...p, label: [pr.street ?? pr.name, pr.housenumber, pr.district].filter(Boolean).join(", "), approx: !street };
   }
   return null;
+}
+
+const STOP = new Set(["rua", "avenida", "av", "travessa", "alameda", "praca", "doutor", "dr", "dona", "professor", "prof", "santo", "santa", "sao", "dos", "das", "de", "da", "do"]);
+const words = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w));
+
+/** True when the matched road shares a meaningful word with the typed street (or nothing street-like was typed). */
+export function sameStreet(typed: string, label: string) {
+  const want = words(typed.split(",")[0] ?? typed);
+  if (want.length === 0) return true;
+  const got = new Set(words(label.split(",")[0] ?? label));
+  return want.some((w) => got.has(w));
 }
 
 /** Correios street lookup: returns the neighbourhood so we can at least place the customer in the right bairro. */
@@ -147,34 +170,54 @@ async function viacepBairro(street: string): Promise<string | null> {
   return Array.isArray(j) ? (j[0]?.bairro || null) : null;
 }
 
-/** Busca o endereço: completo → por CEP (ViaCEP) → sem número da casa → busca tolerante → bairro pela rua → só bairro. */
-export async function geocode(address: string): Promise<LatLng | null> {
+/**
+ * Busca o endereço: completo → rua do CEP → sem número da casa → busca tolerante → bairro.
+ * A street-level hit always wins over a neighbourhood centroid; the latter comes back with approx=true.
+ */
+export async function geocode(address: string): Promise<GeoHit | null> {
   const { findCep, stripHouseNumber } = await import("./br");
-  const tries: string[] = [address];
+  // The raw CEP is never sent to the map: OSM matched "35702-062" to an unrelated house 4 km away.
+  const withoutCep = address.replace(/\b\d{5}-?\d{3}\b/, "").replace(/\s*,\s*,/g, ",").replace(/^[\s,]+|[\s,]+$/g, "");
+  const tries: string[] = [];
+  let cepBairro: string | null = null;
+  let typedStreet = withoutCep;
   const cep = findCep(address);
   if (cep) {
     try {
       const v = (await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json()) as { logradouro?: string; bairro?: string; erro?: boolean };
-      if (!v.erro) tries.push([v.logradouro, v.bairro].filter(Boolean).join(", "), v.bairro ?? "");
+      if (!v.erro) {
+        if (v.logradouro) { tries.push([v.logradouro, v.bairro].filter(Boolean).join(", ")); if (!withoutCep) typedStreet = v.logradouro; }
+        cepBairro = v.bairro ?? null;
+      }
     } catch { /* ignora */ }
   }
-  const noNum = stripHouseNumber(address.replace(/\b\d{5}-?\d{3}\b/, ""));
+  if (withoutCep) tries.push(withoutCep);
+  const noNum = stripHouseNumber(withoutCep);
   tries.push(noNum);
   const unique = [...new Set(tries.filter((t) => t.trim().length > 2))];
+  let rough: GeoHit | null = null;
+  // A street hit only counts when its road matches what was typed; anything else is kept as a rough guess.
+  const keep = (g: GeoHit | null) => {
+    if (g && !g.approx && sameStreet(typedStreet, g.label)) return g;
+    if (g && !rough) rough = { ...g, approx: true };
+    return null;
+  };
   for (const t of unique) {
-    try { const g = await nominatim(t); if (g) return g; } catch { /* tenta o próximo */ }
+    try { const g = keep(await nominatim(t)); if (g) return g; } catch { /* tenta o próximo */ }
   }
-  for (const t of [address, noNum]) {
-    try { const g = await photon(t); if (g) return g; } catch { /* tenta o próximo */ }
+  for (const t of [...new Set([withoutCep || tries[0] || "", noNum].filter((t) => t.trim().length > 2))]) {
+    try { const g = keep(await photon(t)); if (g) return g; } catch { /* tenta o próximo */ }
   }
+  if (rough) return rough;
+  // Street not on the map: fall back to the neighbourhood (from the CEP, the street's CEP record, or the text).
   const parts = noNum.split(",").map((s) => s.trim()).filter(Boolean);
   try {
-    const bairro = await viacepBairro(parts[0] ?? noNum);
-    if (bairro) { const g = (await nominatim(bairro)) ?? (await photon(bairro)); if (g) return g; }
+    const bairro = cepBairro ?? (await viacepBairro(parts[0] ?? noNum)) ?? (parts.length > 1 ? parts[parts.length - 1]! : null);
+    if (bairro) {
+      const g = (await nominatim(bairro).catch(() => null)) ?? (await photon(bairro).catch(() => null));
+      if (g) return { ...g, label: `Bairro ${bairro}`, approx: true };
+    }
   } catch { /* ignora */ }
-  if (parts.length > 1) {
-    try { const g = await nominatim(parts[parts.length - 1]!); if (g) return g; } catch { /* ignora */ }
-  }
   return null;
 }
 

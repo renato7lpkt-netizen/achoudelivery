@@ -10,6 +10,7 @@ import { FREE_KM_OWN, INSTALLMENT_MIN, brl, deliveryFee, geocode, haversineKm, i
 import { createOrder } from "@/lib/orders.functions";
 import { isValidCpf, maskCpf, maskPhone } from "@/lib/br";
 import { locateMe } from "@/lib/locate";
+import { GeoNote } from "@/components/GeoNote";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ function Checkout() {
   // Address saved on the profile; while "useSaved" is on, the checkout delivers there without retyping.
   const [saved, setSaved] = useState<{ address: string; lat: number | null; lng: number | null } | null>(null);
   const [useSaved, setUseSaved] = useState(false);
+  const [found, setFound] = useState<{ label: string; approx: boolean } | null>(null);
 
   // Preenche o endereço salvo na conta (ou do cadastro) e calcula o frete sozinho
   useEffect(() => {
@@ -54,7 +56,7 @@ function Checkout() {
     if (autoGeo.current || !store || !f.address || pos) return;
     autoGeo.current = true;
     setLocating(true);
-    geocode(f.address).then((g) => { if (g) setPos(g); }).finally(() => setLocating(false));
+    geocode(f.address).then((g) => { if (g) { setPos(g); setFound(g); } }).finally(() => setLocating(false));
   }, [store, f.address, pos]);
 
   if (!cart) return <main className="p-16 text-center"><p>Seu carrinho está vazio.</p><Link to="/" className="text-primary underline">Ver lojas</Link></main>;
@@ -71,14 +73,15 @@ function Checkout() {
     setLocating(true);
     const g = await geocode(f.address).catch(() => null);
     setLocating(false);
-    if (!g) { toast.error("Não achamos esse endereço em Sete Lagoas. Confira o nome da rua, tente com o bairro ou o CEP, ou use sua localização."); return; }
-    setPos(g);
+    if (!g) { setFound(null); toast.error("Não achamos esse endereço em Sete Lagoas. Confira o nome da rua, tente com o bairro ou o CEP, ou use sua localização."); return; }
+    setPos(g); setFound(g);
   }
   async function locateGps() {
     setLocating(true);
     try {
       const here = await locateMe();
       setPos({ lat: here.lat, lng: here.lng }); setUseSaved(false);
+      setFound({ label: here.address ?? "sua localização atual", approx: false });
       // Prefill the street so the customer only adds the house number.
       if (here.address) { setF((prev) => ({ ...prev, address: here.address! })); toast.success("Localização encontrada. Confira o número da casa."); }
       else toast.success("Localização encontrada. Digite rua e número para o entregador.");
@@ -169,7 +172,7 @@ function Checkout() {
           ) : (
             <>
               <Label htmlFor="addr">Endereço de entrega</Label>
-              <Input id="addr" required value={f.address} onChange={(e) => { set("address")(e); setPos(null); }} onBlur={() => { if (f.address && !pos) locateByAddress(); }} placeholder="Rua, número e bairro" autoComplete="street-address" />
+              <Input id="addr" required value={f.address} onChange={(e) => { set("address")(e); setPos(null); setFound(null); }} onBlur={() => { if (f.address && !pos) locateByAddress(); }} placeholder="Rua, número e bairro" autoComplete="street-address" />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button type="button" variant="secondary" size="sm" onClick={locateByAddress} disabled={locating}>Calcular distância</Button>
                 <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
@@ -182,6 +185,7 @@ function Checkout() {
               {useSaved ? <><PencilLine className="mr-1 h-4 w-4" />Usar outro endereço</> : <><Home className="mr-1 h-4 w-4" />Usar endereço salvo</>}
             </Button>
           )}
+          {!useSaved && <GeoNote label={found?.label} approx={found?.approx} />}
           {km != null && <p className={`mt-2 text-sm ${outOfRange ? "text-destructive" : "text-muted-foreground"}`}>{km.toFixed(1)} km da loja {outOfRange && "— fora da área de entrega"}</p>}
           <Label htmlFor="notes" className="mt-4 block">Observações</Label>
           <Textarea id="notes" value={f.notes} onChange={set("notes")} placeholder="Ex.: sem cebola, apartamento 201, troco…" />

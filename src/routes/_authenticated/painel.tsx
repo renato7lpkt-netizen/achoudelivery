@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing, Camera, ImageUp } from "lucide-react";
+import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing, Camera, ImageUp, Search, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { CATEGORIES, FREE_KM_OWN, ORDER_STATUS, WEEKDAYS, brl, geocode, isOpenNow, isStorePaused, splitFees } from "@/lib/market";
@@ -13,6 +13,8 @@ import { PushButton } from "@/components/PushButton";
 import { notifyOrderStatus } from "@/lib/push.functions";
 import { ShareLocation } from "@/components/LiveTracking";
 import { compressImage, squareImage } from "@/lib/image";
+import { locateMe } from "@/lib/locate";
+import { GeoNote } from "@/components/GeoNote";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -70,15 +72,30 @@ function CreateStore({ userId }: { userId: string }) {
     email: user.email ?? "", whatsapp: "", phone: "", address: "", cover_url: "", pix_key_type: "", pix_key: "",
     delivery_enabled: true, own_couriers: false,
   });
-  const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [pos, setPos] = useState<{ lat: number; lng: number; label?: string; approx?: boolean } | null>(null);
+  const [finding, setFinding] = useState(false);
   const [terms, setTerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
 
   async function locate() {
+    if (!f.address.trim()) { toast.error("Digite o endereço da loja"); return; }
+    setFinding(true);
     const g = await geocode(f.address).catch(() => null);
-    if (!g) { toast.error("Endereço não encontrado. Confira rua, número e bairro."); return; }
-    setPos(g); toast.success("Endereço localizado no mapa");
+    setFinding(false);
+    if (!g) { toast.error("Endereço não encontrado em Sete Lagoas. Confira rua, número e bairro."); return; }
+    setPos(g);
+  }
+  async function useGps() {
+    setFinding(true);
+    try {
+      const here = await locateMe();
+      setPos({ lat: here.lat, lng: here.lng, label: here.address ?? "sua localização atual" });
+      if (here.address) setF((prev) => ({ ...prev, address: here.address! }));
+      toast.success("Localização da loja encontrada. Confira o número.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não conseguimos sua localização.", { duration: 9000 });
+    } finally { setFinding(false); }
   }
 
   async function create(e: React.FormEvent) {
@@ -141,9 +158,13 @@ function CreateStore({ userId }: { userId: string }) {
         <fieldset className="grid gap-3 rounded-2xl border bg-card p-4">
           <legend className="px-2 font-bold">3. Endereço e entrega</legend>
           <div><Label>Endereço da loja</Label>
-            <div className="flex gap-2"><Input required value={f.address} onChange={(e) => { set("address")(e); setPos(null); }} placeholder="Rua, número, bairro" />
-              <Button type="button" variant="secondary" onClick={locate}><LocateFixed className="mr-1 h-4 w-4" />Localizar</Button></div>
-            <p className={`mt-1 text-xs ${pos ? "text-success" : "text-muted-foreground"}`}>{pos ? "Endereço confirmado ✓" : "Necessário para calcular a distância das entregas"}</p></div>
+            <Input required value={f.address} onChange={(e) => { set("address")(e); setPos(null); }} onBlur={() => { if (f.address && !pos && !finding) locate(); }} placeholder="Rua, número, bairro" />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={locate} disabled={finding}><Search className="mr-1 h-4 w-4" />Buscar endereço</Button>
+              <Button type="button" variant="outline" size="sm" onClick={useGps} disabled={finding}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
+              {finding && <Loader2 className="h-5 w-5 animate-spin" />}
+            </div>
+            {pos ? <GeoNote label={pos.label} approx={pos.approx} /> : <p className="mt-1 text-xs text-muted-foreground">Necessário para calcular a distância das entregas</p>}</div>
           <div><p className="font-semibold">Sua loja tem entregador próprio?</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {[true, false].map((v) => <button type="button" key={String(v)} onClick={() => setF({ ...f, own_couriers: v })} className={`rounded-xl border p-3 text-sm font-semibold ${f.own_couriers === v ? "border-primary bg-accent" : "bg-card"}`}>{v ? "Sim, tenho equipe" : "Não, uso os do AchouDelivery"}</button>)}
@@ -382,21 +403,50 @@ function Products({ store }: { store: Store }) {
 function Settings({ store }: { store: Store }) {
   const qc = useQueryClient();
   const [f, setF] = useState(store);
-  useEffect(() => setF(store), [store]);
+  // Address text the current lat/lng belong to; saving with a different text re-locates first, so they never drift apart.
+  const [geoFor, setGeoFor] = useState(store.address);
+  const [geo, setGeo] = useState<{ label: string; approx: boolean } | null>(null);
+  const [finding, setFinding] = useState(false);
+  useEffect(() => { setF(store); setGeoFor(store.address); setGeo(null); }, [store]);
   const num = (k: keyof Store) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: Number(e.target.value.replace(",", ".")) });
   const txt = (k: keyof Store) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const { id, owner_id, created_at, slug, rating_avg, rating_count, ...patch } = f;
+    let cur = f;
+    if (f.address.trim() && f.address !== geoFor) {
+      setFinding(true);
+      const g = await geocode(f.address).catch(() => null);
+      setFinding(false);
+      if (!g) { toast.error("Não achamos o endereço da loja em Sete Lagoas. Confira e tente de novo."); return; }
+      cur = { ...f, lat: g.lat, lng: g.lng };
+      setF(cur); setGeoFor(f.address); setGeo(g);
+    }
+    const { id, owner_id, created_at, slug, rating_avg, rating_count, ...patch } = cur;
     void id; void owner_id; void created_at; void slug; void rating_avg; void rating_count;
     const { error } = await supabase.from("stores").update(patch).eq("id", store.id);
     if (error) { toast.error("Erro ao salvar"); return; }
     qc.invalidateQueries({ queryKey: ["my-store"] }); toast.success("Salvo");
   }
   async function locate() {
+    if (!f.address.trim()) { toast.error("Digite o endereço da loja"); return; }
+    setFinding(true);
     const g = await geocode(f.address).catch(() => null);
-    if (!g) { toast.error("Endereço não encontrado"); return; }
-    setF({ ...f, lat: g.lat, lng: g.lng }); toast.success("Localização encontrada — salve para aplicar");
+    setFinding(false);
+    if (!g) { toast.error("Endereço não encontrado em Sete Lagoas. Confira rua e bairro."); return; }
+    setF({ ...f, lat: g.lat, lng: g.lng }); setGeoFor(f.address); setGeo(g);
+    toast.success("Endereço encontrado — salve para aplicar");
+  }
+  async function useGps() {
+    setFinding(true);
+    try {
+      const here = await locateMe();
+      const address = here.address ?? f.address;
+      setF({ ...f, address, lat: here.lat, lng: here.lng }); setGeoFor(address);
+      setGeo({ label: here.address ?? "sua localização atual", approx: false });
+      toast.success("Localização da loja encontrada. Confira o número e salve.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não conseguimos sua localização.", { duration: 9000 });
+    } finally { setFinding(false); }
   }
   return (
     <form onSubmit={save} className="mt-4 grid gap-4 md:grid-cols-2">
@@ -420,8 +470,14 @@ function Settings({ store }: { store: Store }) {
         <Input className="mt-2" value={f.cover_url?.startsWith("data:") ? "" : f.cover_url ?? ""} onChange={txt("cover_url")} placeholder="ou cole um link https://…" /></div>
       <div><Label>Telefone</Label><Input value={f.phone ?? ""} onChange={txt("phone")} /></div>
       <div className="md:col-span-2"><Label>Endereço da loja</Label>
-        <div className="flex gap-2"><Input value={f.address} onChange={txt("address")} /><Button type="button" variant="secondary" onClick={locate}><LocateFixed className="mr-1 h-4 w-4" />Localizar</Button></div>
-        <p className="mt-1 text-xs text-muted-foreground">Coordenadas: {f.lat.toFixed(5)}, {f.lng.toFixed(5)}</p></div>
+        <Input value={f.address} onChange={(e) => { txt("address")(e); setGeo(null); }} placeholder="Rua, número, bairro" />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={locate} disabled={finding}><Search className="mr-1 h-4 w-4" />Buscar endereço</Button>
+          <Button type="button" variant="outline" size="sm" onClick={useGps} disabled={finding}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
+          {finding && <Loader2 className="h-5 w-5 animate-spin" />}
+        </div>
+        {geo ? <GeoNote label={geo.label} approx={geo.approx} />
+          : <p className="mt-1 text-xs text-muted-foreground">{f.address !== geoFor ? "Endereço alterado: vamos localizar no mapa ao salvar." : `Ponto no mapa: ${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}`}</p>}</div>
       <label className="flex items-center gap-2 md:col-span-2"><Switch checked={f.own_couriers} onCheckedChange={(v) => setF({ ...f, own_couriers: v })} />Tenho entregador próprio</label>
       {f.own_couriers && <p className="rounded-xl bg-accent p-3 text-sm md:col-span-2">Até {FREE_KM_OWN} km a entrega é <b>grátis</b> para o cliente. O valor abaixo vale só para os km acima de {FREE_KM_OWN}.</p>}
       <div><Label>{f.own_couriers ? `Valor por km acima de ${FREE_KM_OWN} km (R$)` : "Valor por km (R$)"}</Label><Input inputMode="decimal" defaultValue={f.delivery_fee_per_km} onChange={num("delivery_fee_per_km")} /></div>
