@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ManifestDotwebmanifestRouteImport } from './routes/manifest[.]webmanifest'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as TermosRouteImport } from './routes/termos'
@@ -37,6 +38,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManifestDotwebmanifestRoute = ManifestDotwebmanifestRouteImport.update({
+  id: '/manifest.webmanifest',
+  path: '/manifest.webmanifest',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacidadeRoute = PrivacidadeRouteImport.update({
@@ -104,6 +110,7 @@ const ApiPublicAsaasWebhookRoute = ApiPublicAsaasWebhookRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/privacidade': typeof PrivacidadeRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/termos': typeof TermosRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/privacidade': typeof PrivacidadeRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/termos': typeof TermosRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/privacidade': typeof PrivacidadeRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/termos': typeof TermosRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/manifest.webmanifest'
     | '/privacidade'
     | '/redefinir-senha'
     | '/termos'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/manifest.webmanifest'
     | '/privacidade'
     | '/redefinir-senha'
     | '/termos'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/manifest.webmanifest'
     | '/privacidade'
     | '/redefinir-senha'
     | '/termos'
@@ -207,6 +219,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ManifestDotwebmanifestRoute: typeof ManifestDotwebmanifestRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   RedefinirSenhaRoute: typeof RedefinirSenhaRoute
   TermosRoute: typeof TermosRoute
@@ -235,6 +248,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manifest.webmanifest': {
+      id: '/manifest.webmanifest'
+      path: '/manifest.webmanifest'
+      fullPath: '/manifest.webmanifest'
+      preLoaderRoute: typeof ManifestDotwebmanifestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacidade': {
@@ -351,6 +371,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ManifestDotwebmanifestRoute: ManifestDotwebmanifestRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   RedefinirSenhaRoute: RedefinirSenhaRoute,
   TermosRoute: TermosRoute,
