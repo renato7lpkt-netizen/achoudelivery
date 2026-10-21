@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -7,6 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { CITY_CENTER, ORDER_STATUS, brl } from "@/lib/market";
 import { ORDER_COLS } from "@/lib/columns";
+import { summarizeEarnings } from "@/lib/earnings";
+import { EarningsSummary } from "@/components/EarningsSummary";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { ShareLocation } from "@/components/LiveTracking";
@@ -16,8 +19,15 @@ import { Switch } from "@/components/ui/switch";
 
 export const Route = createFileRoute("/_authenticated/entregador")({
   head: () => ({ meta: [{ title: "Entregadores — AchouDelivery" }, { name: "description", content: "Cadastre-se como entregador e receba entregas das lojas de Sete Lagoas." }, { property: "og:title", content: "Seja entregador no AchouDelivery" }, { property: "og:description", content: "Cadastro e painel de entregas." }] }),
+  // ?aba= picks the section, so the phone tab bar (BottomNav) can open it.
+  validateSearch: (s: Record<string, unknown>): { aba?: CourierTab } => (COURIER_TABS.includes(s["aba"] as CourierTab) ? { aba: s["aba"] as CourierTab } : {}),
   component: CourierPage,
 });
+
+const COURIER_TABS = ["disponiveis", "minhas", "ganhos", "perfil"] as const;
+type CourierTab = (typeof COURIER_TABS)[number];
+const ACTIVE = ["pago", "preparando", "saiu_entrega"];
+const REFRESH_MS = 10000; // couriers can't subscribe to other orders' rows, so the board is polled
 
 type Courier = Tables<"couriers">;
 const VEHICLES = ["Moto", "Bicicleta", "Carro", "A pé"];
@@ -32,9 +42,58 @@ function CourierPage() {
   if (isLoading) return <main className="p-16 text-center text-muted-foreground">Carregando…</main>;
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {courier ? <><Approval courier={courier} />{courier.approval_status !== "aprovado" && <DocUpload courier={courier} />}<Profile courier={courier} />{courier.approval_status === "aprovado" && <><OpenDeliveries courier={courier} /><Deliveries courier={courier} /></>}</> : <CourierForm userId={user.id} />}
+      {!courier ? <CourierForm userId={user.id} />
+        : courier.approval_status !== "aprovado" ? <><Approval courier={courier} /><DocUpload courier={courier} /><Profile courier={courier} editable /></>
+        : <CourierTabs courier={courier} />}
     </main>
   );
+}
+
+/** Approved courier: available deliveries, own deliveries, earnings and profile as separate tabs. */
+function CourierTabs({ courier }: { courier: Courier }) {
+  const { aba = "disponiveis" } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const { data } = useCourierOrders(courier.id);
+  const active = data?.filter((o) => ACTIVE.includes(o.status)).length ?? 0;
+  const go = (v: CourierTab) => navigate({ search: { aba: v }, replace: true });
+  return (
+    <>
+      <Profile courier={courier} />
+      <Tabs value={aba} onValueChange={(v) => go(v as CourierTab)} className="mt-4">
+        <TabsList className="grid h-auto w-full grid-cols-4">
+          <TabsTrigger value="disponiveis">Entregas</TabsTrigger>
+          <TabsTrigger value="minhas">Minhas{active > 0 && <span className="ml-1 rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{active}</span>}</TabsTrigger>
+          <TabsTrigger value="ganhos">Ganhos</TabsTrigger>
+          <TabsTrigger value="perfil">Perfil</TabsTrigger>
+        </TabsList>
+        <TabsContent value="disponiveis">
+          {active > 0 && <button onClick={() => go("minhas")} className="mt-4 w-full rounded-xl bg-primary p-3 text-left text-sm font-bold text-primary-foreground">Você tem {active} {active === 1 ? "entrega" : "entregas"} em andamento → ver</button>}
+          <OpenDeliveries courier={courier} onAccepted={() => go("minhas")} />
+        </TabsContent>
+        <TabsContent value="minhas"><Deliveries courier={courier} /></TabsContent>
+        <TabsContent value="ganhos"><CourierEarnings courier={courier} /></TabsContent>
+        <TabsContent value="perfil"><div className="mt-4"><CourierForm userId={courier.user_id} courier={courier} /></div></TabsContent>
+      </Tabs>
+    </>
+  );
+}
+
+/** The courier's own orders, kept fresh by realtime plus a 10 s poll (realtime can drop on phones in the background). */
+function useCourierOrders(courierId: string) {
+  const qc = useQueryClient();
+  const key = ["courier-orders", courierId];
+  useEffect(() => {
+    const ch = supabase.channel(`courier-${courierId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `courier_id=eq.${courierId}` }, () => qc.invalidateQueries({ queryKey: key }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courierId]);
+  return useQuery({
+    queryKey: key,
+    refetchInterval: REFRESH_MS,
+    queryFn: async () => (await supabase.from("orders").select(`${ORDER_COLS},order_items(*),stores(name,address,phone,lat,lng,own_couriers)` as const).eq("courier_id", courierId).order("created_at", { ascending: false }).limit(50)).data ?? [],
+  });
 }
 
 function CourierForm({ userId, courier }: { userId: string; courier?: Courier }) {
@@ -83,7 +142,7 @@ function CourierForm({ userId, courier }: { userId: string; courier?: Courier })
   );
 }
 
-function Profile({ courier }: { courier: Courier }) {
+function Profile({ courier, editable = false }: { courier: Courier; editable?: boolean }) {
   const qc = useQueryClient();
   const [edit, setEdit] = useState(false);
   return (
@@ -96,8 +155,8 @@ function Profile({ courier }: { courier: Courier }) {
           <span className={courier.available ? "text-success" : "text-muted-foreground"}>{courier.available ? "Disponível" : "Indisponível"}</span>
         </label>
       </div>
-      <Button variant="link" className="px-0" onClick={() => setEdit(!edit)}>{edit ? "Fechar" : "Editar meus dados"}</Button>
-      {edit && <CourierForm userId={courier.user_id} courier={courier} />}
+      {editable && <Button variant="link" className="px-0" onClick={() => setEdit(!edit)}>{edit ? "Fechar" : "Editar meus dados"}</Button>}
+      {editable && edit && <CourierForm userId={courier.user_id} courier={courier} />}
     </section>
   );
 }
@@ -105,28 +164,18 @@ function Profile({ courier }: { courier: Courier }) {
 function Deliveries({ courier }: { courier: Courier }) {
   const qc = useQueryClient();
   const key = ["courier-orders", courier.id];
-  const { data } = useQuery({
-    queryKey: key,
-    queryFn: async () => (await supabase.from("orders").select(`${ORDER_COLS},order_items(*),stores(name,address,phone,lat,lng)` as const).eq("courier_id", courier.id).order("created_at", { ascending: false }).limit(50)).data ?? [],
-  });
-  useEffect(() => {
-    const ch = supabase.channel(`courier-${courier.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `courier_id=eq.${courier.id}` }, () => qc.invalidateQueries({ queryKey: key }))
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courier.id]);
+  const { data } = useCourierOrders(courier.id);
   async function move(id: string, status: string) {
     const { error } = await supabase.rpc("courier_update_order", { _order: id, _status: status });
     if (error) { toast.error("Não foi possível atualizar"); return; }
     qc.invalidateQueries({ queryKey: key });
   }
-  const active = data?.filter((o) => ["pago", "preparando", "saiu_entrega"].includes(o.status)) ?? [];
+  const active = data?.filter((o) => ACTIVE.includes(o.status)) ?? [];
   const done = data?.filter((o) => !active.includes(o)) ?? [];
   return (
-    <section className="mt-6">
+    <section className="mt-4">
       <h2 className="text-xl font-bold">Minhas entregas</h2>
-      {active.length === 0 && <p className="mt-2 text-muted-foreground">Nenhuma entrega no momento. Fique disponível para as lojas te chamarem.</p>}
+      {active.length === 0 && <p className="mt-2 text-muted-foreground">Nenhuma entrega no momento. Veja a aba <Link to="/entregador" search={{ aba: "disponiveis" }} className="font-semibold text-primary underline">Entregas</Link> para aceitar uma perto de você.</p>}
       <div className="mt-3 space-y-3">
         {active.map((o) => (
           <div key={o.id} className="rounded-2xl border bg-card p-4">
@@ -135,7 +184,7 @@ function Deliveries({ courier }: { courier: Courier }) {
             <p className="mt-2 flex gap-2 text-sm"><MapPin className="h-4 w-4 shrink-0 text-primary" />Coletar: {o.stores?.address}</p>
             <p className="mt-1 flex gap-2 text-sm"><Navigation className="h-4 w-4 shrink-0 text-primary" />Entregar: {o.address} ({o.distance_km} km)</p>
             <p className="mt-1 flex gap-2 text-sm"><Phone className="h-4 w-4 shrink-0 text-primary" />{o.customer_name} · {o.customer_phone}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{o.order_items.map((i) => `${i.qty}× ${i.name}`).join(", ")} {Number(o.courier_payout) > 0 && <> · <b className="text-success">Você ganha {brl(Number(o.courier_payout))}</b></>}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{o.order_items.map((i) => `${i.qty}× ${i.name}`).join(", ")} {Number(o.courier_payout) > 0 ? <> · <b className="text-success">Você ganha {brl(Number(o.courier_payout))}</b></> : o.stores?.own_couriers && <> · <span>pagamento combinado com a loja</span></>}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {o.lat && <Button asChild size="sm" variant="outline"><a href={`https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}`} target="_blank" rel="noreferrer">Abrir rota</a></Button>}
               {o.status === "preparando" && <Button size="sm" onClick={() => move(o.id, "saiu_entrega")}>Peguei o pedido</Button>}
@@ -149,14 +198,14 @@ function Deliveries({ courier }: { courier: Courier }) {
       {done.length > 0 && <>
         <h3 className="mt-6 font-semibold">Histórico</h3>
         <ul className="mt-2 divide-y rounded-2xl border bg-card text-sm">
-          {done.map((o) => <li key={o.id} className="flex justify-between p-3"><span>{o.stores?.name} · {new Date(o.created_at).toLocaleDateString("pt-BR")}</span><span>{ORDER_STATUS[o.status]}</span></li>)}
+          {done.map((o) => <li key={o.id} className="flex justify-between gap-2 p-3"><span>{o.stores?.name} · {new Date(o.created_at).toLocaleDateString("pt-BR")}</span><span className="text-right">{ORDER_STATUS[o.status]}{o.status === "concluido" && Number(o.courier_payout) > 0 && <b className="ml-2 text-success">{brl(Number(o.courier_payout))}</b>}</span></li>)}
         </ul></>}
     </section>
   );
 }
 
 /** Board of paid orders from stores without own couriers, nearest store first; first courier to accept takes it. */
-function OpenDeliveries({ courier }: { courier: Courier }) {
+function OpenDeliveries({ courier, onAccepted }: { courier: Courier; onAccepted: () => void }) {
   const qc = useQueryClient();
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
   const [taking, setTaking] = useState<string | null>(null);
@@ -173,7 +222,7 @@ function OpenDeliveries({ courier }: { courier: Courier }) {
   const { data, isFetching, refetch } = useQuery({
     queryKey: key,
     enabled: !!here && courier.available,
-    refetchInterval: 20000, // couriers can't subscribe to other orders' rows, so poll the board
+    refetchInterval: REFRESH_MS,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("open_deliveries", { _lat: here!.lat, _lng: here!.lng });
       if (error) throw error;
@@ -186,12 +235,12 @@ function OpenDeliveries({ courier }: { courier: Courier }) {
     setTaking(null);
     if (error) { toast.error(error.message); return; }
     if (!ok) toast.error("Outro entregador pegou essa entrega primeiro.");
-    else toast.success("Entrega aceita! Vá até a loja para coletar.");
+    else { toast.success("Entrega aceita! Vá até a loja para coletar."); onAccepted(); }
     qc.invalidateQueries({ queryKey: ["open-deliveries"] });
     qc.invalidateQueries({ queryKey: ["courier-orders", courier.id] });
   }
   return (
-    <section className="mt-6">
+    <section className="mt-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xl font-bold">Entregas disponíveis</h2>
         {courier.available && <Button size="sm" variant="ghost" onClick={() => refetch()} disabled={isFetching} aria-label="Atualizar">
@@ -203,7 +252,7 @@ function OpenDeliveries({ courier }: { courier: Courier }) {
       ) : !data ? (
         <p className="mt-2 text-sm text-muted-foreground">Buscando entregas perto de você…</p>
       ) : data.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">Nenhuma entrega aberta agora. A lista atualiza sozinha a cada 20 segundos.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Nenhuma entrega aberta agora. A lista atualiza sozinha a cada 10 segundos.</p>
       ) : (
         <div className="mt-3 space-y-3">
           {data.map((d) => (
@@ -231,6 +280,34 @@ function OpenDeliveries({ courier }: { courier: Courier }) {
         </div>
       )}
     </section>
+  );
+}
+
+/** Delivery fees of platform deliveries (orders.courier_payout); store-team deliveries are paid by the store itself. */
+function CourierEarnings({ courier }: { courier: Courier }) {
+  const { data } = useQuery({
+    queryKey: ["courier-earnings", courier.id],
+    refetchInterval: 60000,
+    queryFn: async () => (await supabase.from("orders").select("status,payment_status,delivered_at,courier_payout,courier_payout_id")
+      .eq("courier_id", courier.id).in("status", ACTIVE.concat("concluido")).order("created_at", { ascending: false }).limit(1000)).data ?? [],
+  });
+  const { data: payouts } = useQuery({
+    queryKey: ["my-courier-payouts", courier.id],
+    queryFn: async () => (await supabase.from("courier_payouts").select("id,amount,orders_count,status,created_at").eq("courier_id", courier.id).order("created_at", { ascending: false }).limit(24)).data ?? [],
+  });
+  if (!data) return <p className="mt-4 text-sm text-muted-foreground">Carregando…</p>;
+  const s = summarizeEarnings(data.map((o) => ({ ...o, amount: Number(o.courier_payout), settled: o.courier_payout_id != null })));
+  return (
+    <div className="mt-4 space-y-4">
+      <EarningsSummary s={s} note="Você recebe a taxa de entrega inteira das entregas do AchouDelivery, por Pix na chave do seu perfil. Entregas da equipe própria de uma loja são pagas direto pela loja e não entram aqui." />
+      {!courier.pix_key && <p className="rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Cadastre sua chave Pix na aba <b>Perfil</b> para receber os repasses.</p>}
+      {payouts && payouts.length > 0 && (
+        <section className="rounded-2xl border bg-card p-4 text-sm">
+          <h3 className="font-bold">Repasses recebidos</h3>
+          {payouts.map((p) => <p key={p.id} className="mt-1 flex justify-between"><span>{new Date(p.created_at).toLocaleDateString("pt-BR")} · {p.orders_count} entregas</span><span>{brl(Number(p.amount))} · {p.status}</span></p>)}
+        </section>
+      )}
+    </div>
   );
 }
 

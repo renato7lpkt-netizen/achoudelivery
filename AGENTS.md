@@ -1,6 +1,7 @@
 ## Hosting
 - No longer connected to Lovable. Deployed as a standalone Node.js server (Hostinger): `npm run build` → `npm start` (`node .output/server/index.mjs`), nitro preset `node-server` in `vite.config.ts`.
 - `VITE_*` env vars are inlined at build time; everything else is read at runtime. Template: `.env.example`.
+- Three installable apps from one site (see `docs/APPS.md`): `appArea(pathname)` in `src/lib/web-manifest.ts` maps `/painel` → Loja, `/entregador` → Entregador, the rest → Cliente; the root `head` links that app's manifest/icon/title, and `SiteHeader`/`BottomNav`/`CartBar` show only that area's links. Panel and courier sections are `?aba=` search params. Play Store TWA verification is `/.well-known/assetlinks.json` from `ANDROID_SHA256_FINGERPRINTS`.
 - Google login uses `supabase.auth.signInWithOAuth` (provider must be enabled in Supabase Auth); push uses FCM HTTP v1 directly with `FIREBASE_SERVICE_ACCOUNT` (`src/lib/push.server.ts`).
 
 ## Marketplace rules

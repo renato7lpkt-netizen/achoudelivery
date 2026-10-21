@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ManifestEntregadorDotwebmanifestRouteImport } from './routes/manifest-entregador[.]webmanifest'
+import { Route as ManifestLojaDotwebmanifestRouteImport } from './routes/manifest-loja[.]webmanifest'
 import { Route as ManifestDotwebmanifestRouteImport } from './routes/manifest[.]webmanifest'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as TermosRouteImport } from './routes/termos'
+import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from './routes/[.]well-known.assetlinks[.]json'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
 import { Route as AuthenticatedEntregadorRouteImport } from './routes/_authenticated/entregador'
@@ -40,6 +43,18 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManifestEntregadorDotwebmanifestRoute =
+  ManifestEntregadorDotwebmanifestRouteImport.update({
+    id: '/manifest-entregador.webmanifest',
+    path: '/manifest-entregador.webmanifest',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ManifestLojaDotwebmanifestRoute =
+  ManifestLojaDotwebmanifestRouteImport.update({
+    id: '/manifest-loja.webmanifest',
+    path: '/manifest-loja.webmanifest',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ManifestDotwebmanifestRoute = ManifestDotwebmanifestRouteImport.update({
   id: '/manifest.webmanifest',
   path: '/manifest.webmanifest',
@@ -60,6 +75,12 @@ const TermosRoute = TermosRouteImport.update({
   path: '/termos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownAssetlinksDotjsonRoute =
+  DotwellKnownAssetlinksDotjsonRouteImport.update({
+    id: '/.well-known/assetlinks.json',
+    path: '/.well-known/assetlinks.json',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -110,10 +131,13 @@ const ApiPublicAsaasWebhookRoute = ApiPublicAsaasWebhookRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/manifest-entregador.webmanifest': typeof ManifestEntregadorDotwebmanifestRoute
+  '/manifest-loja.webmanifest': typeof ManifestLojaDotwebmanifestRoute
   '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/privacidade': typeof PrivacidadeRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/termos': typeof TermosRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/entregador': typeof AuthenticatedEntregadorRoute
@@ -127,10 +151,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/manifest-entregador.webmanifest': typeof ManifestEntregadorDotwebmanifestRoute
+  '/manifest-loja.webmanifest': typeof ManifestLojaDotwebmanifestRoute
   '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/privacidade': typeof PrivacidadeRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/termos': typeof TermosRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/entregador': typeof AuthenticatedEntregadorRoute
@@ -146,10 +173,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/manifest-entregador.webmanifest': typeof ManifestEntregadorDotwebmanifestRoute
+  '/manifest-loja.webmanifest': typeof ManifestLojaDotwebmanifestRoute
   '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/privacidade': typeof PrivacidadeRoute
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/termos': typeof TermosRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
   '/_authenticated/entregador': typeof AuthenticatedEntregadorRoute
@@ -165,10 +195,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/manifest-entregador.webmanifest'
+    | '/manifest-loja.webmanifest'
     | '/manifest.webmanifest'
     | '/privacidade'
     | '/redefinir-senha'
     | '/termos'
+    | '/.well-known/assetlinks.json'
     | '/admin'
     | '/checkout'
     | '/entregador'
@@ -182,10 +215,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/manifest-entregador.webmanifest'
+    | '/manifest-loja.webmanifest'
     | '/manifest.webmanifest'
     | '/privacidade'
     | '/redefinir-senha'
     | '/termos'
+    | '/.well-known/assetlinks.json'
     | '/admin'
     | '/checkout'
     | '/entregador'
@@ -200,10 +236,13 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/manifest-entregador.webmanifest'
+    | '/manifest-loja.webmanifest'
     | '/manifest.webmanifest'
     | '/privacidade'
     | '/redefinir-senha'
     | '/termos'
+    | '/.well-known/assetlinks.json'
     | '/_authenticated/admin'
     | '/_authenticated/checkout'
     | '/_authenticated/entregador'
@@ -219,10 +258,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ManifestEntregadorDotwebmanifestRoute: typeof ManifestEntregadorDotwebmanifestRoute
+  ManifestLojaDotwebmanifestRoute: typeof ManifestLojaDotwebmanifestRoute
   ManifestDotwebmanifestRoute: typeof ManifestDotwebmanifestRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   RedefinirSenhaRoute: typeof RedefinirSenhaRoute
   TermosRoute: typeof TermosRoute
+  DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute
   LojaSlugRoute: typeof LojaSlugRoute
   ApiPublicAsaasWebhookRoute: typeof ApiPublicAsaasWebhookRoute
 }
@@ -248,6 +290,20 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manifest-entregador.webmanifest': {
+      id: '/manifest-entregador.webmanifest'
+      path: '/manifest-entregador.webmanifest'
+      fullPath: '/manifest-entregador.webmanifest'
+      preLoaderRoute: typeof ManifestEntregadorDotwebmanifestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manifest-loja.webmanifest': {
+      id: '/manifest-loja.webmanifest'
+      path: '/manifest-loja.webmanifest'
+      fullPath: '/manifest-loja.webmanifest'
+      preLoaderRoute: typeof ManifestLojaDotwebmanifestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/manifest.webmanifest': {
@@ -276,6 +332,13 @@ declare module '@tanstack/react-router' {
       path: '/termos'
       fullPath: '/termos'
       preLoaderRoute: typeof TermosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/assetlinks.json': {
+      id: '/.well-known/assetlinks.json'
+      path: '/.well-known/assetlinks.json'
+      fullPath: '/.well-known/assetlinks.json'
+      preLoaderRoute: typeof DotwellKnownAssetlinksDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin': {
@@ -371,10 +434,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ManifestEntregadorDotwebmanifestRoute: ManifestEntregadorDotwebmanifestRoute,
+  ManifestLojaDotwebmanifestRoute: ManifestLojaDotwebmanifestRoute,
   ManifestDotwebmanifestRoute: ManifestDotwebmanifestRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   RedefinirSenhaRoute: RedefinirSenhaRoute,
   TermosRoute: TermosRoute,
+  DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
   LojaSlugRoute: LojaSlugRoute,
   ApiPublicAsaasWebhookRoute: ApiPublicAsaasWebhookRoute,
 }

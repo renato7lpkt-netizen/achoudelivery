@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -16,6 +16,8 @@ import { compressImage, squareImage } from "@/lib/image";
 import { locateMe } from "@/lib/locate";
 import { GeoNote } from "@/components/GeoNote";
 import { ORDER_COLS, STORE_COLS } from "@/lib/columns";
+import { summarizeEarnings } from "@/lib/earnings";
+import { EarningsSummary } from "@/components/EarningsSummary";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,13 +26,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_authenticated/painel")({
   head: () => ({ meta: [{ title: "Painel do lojista — AchouDelivery" }, { name: "description", content: "Gerencie produtos, horários, entrega e pedidos." }, { property: "og:title", content: "Painel do lojista — AchouDelivery" }, { property: "og:description", content: "Painel da sua loja." }] }),
+  // ?aba= picks the section, so the phone tab bar (BottomNav) can open it.
+  validateSearch: (s: Record<string, unknown>): { aba?: PanelTab } => (PANEL_TABS.includes(s["aba"] as PanelTab) ? { aba: s["aba"] as PanelTab } : {}),
   component: Painel,
 });
+
+const PANEL_TABS = ["pedidos", "produtos", "recebimento", "loja", "horarios", "equipe", "dados"] as const;
+type PanelTab = (typeof PANEL_TABS)[number];
 
 type Store = Tables<"stores">;
 
 function Painel() {
   const { user } = Route.useRouteContext();
+  const { aba = "pedidos" } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
   const { data: store, isLoading } = useQuery({
     queryKey: ["my-store", user.id],
     // Payout fields are not readable here (migration 0014); the owner gets them from useStorePix.
@@ -46,8 +55,8 @@ function Painel() {
         <PauseToggle store={store} />
       </div>
       <PixReminder storeId={store.id} />
-      <Tabs defaultValue="pedidos" className="mt-6">
-        <TabsList className="h-auto flex-wrap"><TabsTrigger value="recebimento">Recebimento</TabsTrigger><TabsTrigger value="pedidos">Pedidos</TabsTrigger><TabsTrigger value="produtos">Produtos</TabsTrigger><TabsTrigger value="loja">Loja e entrega</TabsTrigger><TabsTrigger value="horarios">Horários</TabsTrigger><TabsTrigger value="equipe">Meus entregadores</TabsTrigger><TabsTrigger value="dados">Dados cadastrais</TabsTrigger></TabsList>
+      <Tabs value={aba} onValueChange={(v) => navigate({ search: { aba: v as PanelTab }, replace: true })} className="mt-6">
+        <TabsList className="h-auto flex-wrap"><TabsTrigger value="pedidos">Pedidos</TabsTrigger><TabsTrigger value="recebimento">Ganhos e Pix</TabsTrigger><TabsTrigger value="produtos">Produtos</TabsTrigger><TabsTrigger value="loja">Loja e entrega</TabsTrigger><TabsTrigger value="horarios">Horários</TabsTrigger><TabsTrigger value="equipe">Meus entregadores</TabsTrigger><TabsTrigger value="dados">Dados cadastrais</TabsTrigger></TabsList>
         <TabsContent value="recebimento"><Payout store={store} /></TabsContent>
         <TabsContent value="pedidos"><Orders store={store} /></TabsContent>
         <TabsContent value="produtos"><Products store={store} /></TabsContent>
@@ -257,6 +266,7 @@ function Orders({ store }: { store: Store }) {
           if (typeof Notification !== "undefined" && Notification.permission === "granted") new Notification("AchouDelivery — novo pedido!", { body: "Um cliente acabou de pagar. Abra o painel para aceitar." });
         }
         qc.invalidateQueries({ queryKey: key });
+        qc.invalidateQueries({ queryKey: ["store-earnings", store.id] });
       }).subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -296,7 +306,8 @@ function Orders({ store }: { store: Store }) {
           <p className="mt-1 text-sm text-muted-foreground">{new Date(o.created_at).toLocaleString("pt-BR")} · Entrega ({o.distance_km} km): {o.address} · {o.payment_method === "PIX" ? "Pix" : "Cartão"}</p>
           <ul className="mt-2 text-sm">{o.order_items.map((i) => <li key={i.id}>{i.qty}× {i.name}</li>)}</ul>
           {o.notes && <p className="mt-1 text-sm italic">Obs.: {o.notes}</p>}
-          <p className="mt-2 text-sm">Total {brl(Number(o.total))} · Você recebe <b>{brl(Number(o.store_payout))}</b></p>
+          <p className="mt-2 text-sm">Total {brl(Number(o.total))} · Você recebe <b className="text-success">≈ {brl(Number(o.store_payout))}</b></p>
+          <p className="text-xs text-muted-foreground">Descontos: pagamento {brl(Number(o.gateway_fee))} · AchouDelivery {brl(Number(o.platform_fee))}{Number(o.courier_payout) > 0 && <> · entregador {brl(Number(o.courier_payout))}</>}</p>
           {o.fulfillment === "delivery" && !["concluido", "cancelado", "aguardando_pagamento"].includes(o.status) && (
             <div className="mt-2 flex items-center gap-2 text-sm">
               <span className="font-semibold">Entregador:</span>
@@ -509,7 +520,7 @@ function useStorePix(storeId: string) {
 function PixReminder({ storeId }: { storeId: string }) {
   const { data } = useStorePix(storeId);
   if (!data || data.pix_key) return null;
-  return <p className="mt-4 rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Cadastre sua chave Pix na aba "Recebimento" para receber o repasse mensal das vendas.</p>;
+  return <p className="mt-4 rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Cadastre sua chave Pix na aba "Ganhos e Pix" para receber o repasse das vendas.</p>;
 }
 
 function Payout({ store }: { store: Store }) {
@@ -526,15 +537,31 @@ function Payout({ store }: { store: Store }) {
     qc.invalidateQueries({ queryKey: ["my-store-pix", store.id] }); toast.success("Chave Pix atualizada");
   }
   return (
-    <form onSubmit={save} className="mt-4 grid max-w-xl gap-4 rounded-2xl border bg-card p-5">
-      <div><h2 className="text-lg font-bold">Recebimento mensal</h2>
+    <div className="mt-4 space-y-4">
+    <StoreEarnings store={store} />
+    <form onSubmit={save} className="grid max-w-xl gap-4 rounded-2xl border bg-card p-5">
+      <div><h2 className="text-lg font-bold">Chave Pix do repasse</h2>
         <p className="text-sm text-muted-foreground">O AchouDelivery faz o repasse das suas vendas (menos a comissão de 5,5% e a taxa do meio de pagamento de cada produto) para a chave Pix abaixo. Você pode trocar quando quiser.</p></div>
       <div><Label>Tipo da chave Pix</Label><select className="h-10 w-full rounded-md border bg-card px-3" value={type} onChange={(e) => setType(e.target.value)}><option value="">—</option>{["CPF", "CNPJ", "Celular", "E-mail", "Aleatória"].map((t) => <option key={t}>{t}</option>)}</select></div>
       <div><Label>Chave Pix</Label><Input value={key} onChange={(e) => setKey(e.target.value)} /></div>
       <Button type="submit">Salvar chave Pix</Button>
       <PayoutHistory storeId={store.id} />
     </form>
+    </div>
   );
+}
+
+/** What the store gets from its orders: the stored store_payout already has the payment fee, the 5.5% and the platform courier taken out. */
+function StoreEarnings({ store }: { store: Store }) {
+  const { data } = useQuery({
+    queryKey: ["store-earnings", store.id],
+    refetchInterval: 60000,
+    queryFn: async () => (await supabase.from("orders").select("status,payment_status,delivered_at,store_payout,payout_id")
+      .eq("store_id", store.id).in("status", ["pago", "preparando", "saiu_entrega", "concluido"]).order("created_at", { ascending: false }).limit(1000)).data ?? [],
+  });
+  if (!data) return null;
+  const s = summarizeEarnings(data.map((o) => ({ ...o, amount: Number(o.store_payout), settled: o.payout_id != null })));
+  return <EarningsSummary s={s} note={`Valores já sem a taxa do pagamento, a comissão de 5,5%${store.own_couriers ? "" : " e a taxa de entrega (que vai para o entregador)"}. O repasse é feito por Pix para a chave abaixo.`} />;
 }
 
 function Hours({ store }: { store: Store }) {

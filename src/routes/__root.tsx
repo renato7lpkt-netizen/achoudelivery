@@ -18,6 +18,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { IosInstallHint } from "@/components/IosInstallHint";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { APPS, appArea } from "@/lib/web-manifest";
 
 function NotFoundComponent() {
   return (
@@ -77,14 +78,18 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
+  // Manifest, icon and app name follow the area being viewed (Cliente, Loja or Entregador),
+  // so installing from the store panel or the courier page creates that app on the phone.
+  head: ({ matches }) => {
+    const app = APPS[appArea(matches[matches.length - 1]?.pathname ?? "/")];
+    return {
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { name: "theme-color", content: "#ea580c" },
+      { name: "theme-color", content: app.theme },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-title", content: "AchouDelivery" },
+      { name: "apple-mobile-web-app-title", content: app.title },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
       { title: "AchouDelivery — Lojas de Sete Lagoas" },
       { name: "description", content: "Peça das lojas de Sete Lagoas com entrega rápida." },
@@ -97,12 +102,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: appCss,
       },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
-      { rel: "apple-touch-icon", type: "image/png", href: "/apple-touch-icon.png" },
-      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", type: "image/png", href: app.appleIcon },
+      { rel: "manifest", href: app.manifest },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" },
     ],
-  }),
+    };
+  },
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,

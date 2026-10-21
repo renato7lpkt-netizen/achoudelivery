@@ -3,12 +3,13 @@ import { ShoppingBag, Store, ChevronRight } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { bottomNavVisible } from "@/components/BottomNav";
 import { brl } from "@/lib/market";
+import { appArea } from "@/lib/web-manifest";
 
 /** Faixa fixa no rodapé com o carrinho: abrir a loja ou fechar o pedido. */
 export function CartBar() {
   const { cart, count, subtotal } = useCart();
   const { pathname } = useLocation();
-  if (!cart || count === 0 || pathname.startsWith("/checkout") || pathname.startsWith("/pedido")) return null;
+  if (!cart || count === 0 || pathname.startsWith("/checkout") || pathname.startsWith("/pedido") || appArea(pathname) !== "cliente") return null;
   const inStore = pathname === `/loja/${cart.storeSlug}`;
   // On phones the tab bar sits at the very bottom, so the cart rides just above it.
   const aboveNav = bottomNavVisible(pathname);
