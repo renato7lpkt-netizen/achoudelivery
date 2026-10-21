@@ -15,6 +15,7 @@ import { CartProvider } from "@/lib/cart";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CartBar } from "@/components/CartBar";
 import { BottomNav } from "@/components/BottomNav";
+import { IosInstallHint } from "@/components/IosInstallHint";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -79,11 +80,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { name: "theme-color", content: "#ea580c" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-title", content: "AchouDelivery" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
       { title: "AchouDelivery — Lojas de Sete Lagoas" },
       { name: "description", content: "Peça das lojas de Sete Lagoas com entrega rápida." },
       { property: "og:type", content: "website" },
@@ -150,6 +152,7 @@ function RootComponent() {
         <Outlet />
         <CartBar />
         <BottomNav />
+        <IosInstallHint />
         <Toaster richColors position="top-center" />
       </CartProvider>
     </QueryClientProvider>
