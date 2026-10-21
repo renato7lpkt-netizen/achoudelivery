@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { asaas } from "./asaas.server";
-import { deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitFees } from "./market";
+import { deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitOrder } from "./market";
 
 const Input = z.object({
   storeId: z.string().uuid(),
@@ -58,7 +58,9 @@ export const createOrder = createServerFn({ method: "POST" })
     }
 
     const total = Math.round((subtotal + fee) * 100) / 100;
-    const split = splitFees(total, data.method);
+    const split = splitOrder(subtotal, fee, data.method, !!store.own_couriers);
+    // Tiny orders with a platform courier would leave the store owing money after fees and the courier's share.
+    if (split.payout <= 0) throw new Error("Valor dos produtos muito baixo para cobrir a entrega. Adicione mais itens.");
 
     const { data: order, error } = await supabaseAdmin
       .from("orders")
@@ -66,7 +68,7 @@ export const createOrder = createServerFn({ method: "POST" })
         store_id: store.id, customer_id: context.userId, fulfillment: data.fulfillment,
         customer_name: data.name, customer_phone: data.phone, address: data.address ?? null,
         lat: data.lat ?? null, lng: data.lng ?? null, distance_km: km, subtotal, delivery_fee: fee, total,
-        platform_fee: split.platform, gateway_fee: split.gateway, store_payout: split.payout,
+        platform_fee: split.platform, gateway_fee: split.gateway, store_payout: split.payout, courier_payout: split.courier,
         delivery_pin: String(crypto.getRandomValues(new Uint32Array(1))[0]! % 10000).padStart(4, "0"),
         payment_method: data.method, notes: data.notes ?? null,
       })

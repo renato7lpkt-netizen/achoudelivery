@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MapPin, Phone, Navigation } from "lucide-react";
+import { MapPin, Phone, Navigation, Store, Bike, RefreshCw, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import { ORDER_STATUS, brl } from "@/lib/market";
+import { CITY_CENTER, ORDER_STATUS, brl } from "@/lib/market";
 import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { ShareLocation } from "@/components/LiveTracking";
@@ -20,6 +20,7 @@ export const Route = createFileRoute("/_authenticated/entregador")({
 
 type Courier = Tables<"couriers">;
 const VEHICLES = ["Moto", "Bicicleta", "Carro", "A pé"];
+const PIX_TYPES = ["CPF", "CNPJ", "E-mail", "Celular", "Aleatória"];
 
 function CourierPage() {
   const { user } = Route.useRouteContext();
@@ -30,7 +31,7 @@ function CourierPage() {
   if (isLoading) return <main className="p-16 text-center text-muted-foreground">Carregando…</main>;
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {courier ? <><Approval courier={courier} />{courier.approval_status !== "aprovado" && <DocUpload courier={courier} />}<Profile courier={courier} />{courier.approval_status === "aprovado" && <Deliveries courier={courier} />}</> : <CourierForm userId={user.id} />}
+      {courier ? <><Approval courier={courier} />{courier.approval_status !== "aprovado" && <DocUpload courier={courier} />}<Profile courier={courier} />{courier.approval_status === "aprovado" && <><OpenDeliveries courier={courier} /><Deliveries courier={courier} /></>}</> : <CourierForm userId={user.id} />}
     </main>
   );
 }
@@ -40,13 +41,15 @@ function CourierForm({ userId, courier }: { userId: string; courier?: Courier })
   const [f, setF] = useState({
     name: courier?.name ?? "", phone: courier?.phone ?? "", cpf: courier?.cpf ?? "",
     vehicle: courier?.vehicle ?? "Moto", plate: courier?.plate ?? "", pix_key: courier?.pix_key ?? "",
+    pix_key_type: courier?.pix_key_type ?? "",
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const cpf = f.cpf.replace(/\D/g, "");
     if (cpf.length !== 11) { toast.error("CPF inválido"); return; }
-    const row = { ...f, cpf, plate: f.plate || null, pix_key: f.pix_key || null };
+    if (f.pix_key && !f.pix_key_type) { toast.error("Escolha o tipo da chave Pix"); return; }
+    const row = { ...f, cpf, plate: f.plate || null, pix_key: f.pix_key || null, pix_key_type: f.pix_key ? f.pix_key_type : null };
     const { error } = courier
       ? await supabase.from("couriers").update(row).eq("id", courier.id)
       : await supabase.from("couriers").insert({ ...row, user_id: userId });
@@ -67,6 +70,11 @@ function CourierForm({ userId, courier }: { userId: string; courier?: Courier })
             {VEHICLES.map((v) => <option key={v}>{v}</option>)}
           </select></div>
         <div><Label>Placa (se houver)</Label><Input value={f.plate} onChange={set("plate")} /></div>
+        <div><Label>Tipo da chave Pix</Label>
+          <select className="h-10 w-full rounded-md border bg-card px-3" value={f.pix_key_type} onChange={set("pix_key_type")}>
+            <option value="">Escolha…</option>
+            {PIX_TYPES.map((t) => <option key={t}>{t}</option>)}
+          </select></div>
         <div><Label>Chave Pix (para receber)</Label><Input value={f.pix_key} onChange={set("pix_key")} /></div>
       </div>
       <Button type="submit" className="w-full">{courier ? "Salvar dados" : "Quero ser entregador"}</Button>
@@ -126,7 +134,7 @@ function Deliveries({ courier }: { courier: Courier }) {
             <p className="mt-2 flex gap-2 text-sm"><MapPin className="h-4 w-4 shrink-0 text-primary" />Coletar: {o.stores?.address}</p>
             <p className="mt-1 flex gap-2 text-sm"><Navigation className="h-4 w-4 shrink-0 text-primary" />Entregar: {o.address} ({o.distance_km} km)</p>
             <p className="mt-1 flex gap-2 text-sm"><Phone className="h-4 w-4 shrink-0 text-primary" />{o.customer_name} · {o.customer_phone}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{o.order_items.map((i) => `${i.qty}× ${i.name}`).join(", ")} · Taxa de entrega {brl(Number(o.delivery_fee))}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{o.order_items.map((i) => `${i.qty}× ${i.name}`).join(", ")} {Number(o.courier_payout) > 0 && <> · <b className="text-success">Você ganha {brl(Number(o.courier_payout))}</b></>}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {o.lat && <Button asChild size="sm" variant="outline"><a href={`https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}`} target="_blank" rel="noreferrer">Abrir rota</a></Button>}
               {o.status === "preparando" && <Button size="sm" onClick={() => move(o.id, "saiu_entrega")}>Peguei o pedido</Button>}
@@ -142,6 +150,85 @@ function Deliveries({ courier }: { courier: Courier }) {
         <ul className="mt-2 divide-y rounded-2xl border bg-card text-sm">
           {done.map((o) => <li key={o.id} className="flex justify-between p-3"><span>{o.stores?.name} · {new Date(o.created_at).toLocaleDateString("pt-BR")}</span><span>{ORDER_STATUS[o.status]}</span></li>)}
         </ul></>}
+    </section>
+  );
+}
+
+/** Board of paid orders from stores without own couriers, nearest store first; first courier to accept takes it. */
+function OpenDeliveries({ courier }: { courier: Courier }) {
+  const qc = useQueryClient();
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
+  const [taking, setTaking] = useState<string | null>(null);
+  useEffect(() => {
+    if (!navigator.geolocation) { setHere(CITY_CENTER); return; }
+    const id = navigator.geolocation.watchPosition(
+      (p) => setHere({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => setHere((h) => h ?? CITY_CENTER), // without GPS, sort from downtown
+      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, []);
+  const key = ["open-deliveries", here?.lat.toFixed(3), here?.lng.toFixed(3)];
+  const { data, isFetching, refetch } = useQuery({
+    queryKey: key,
+    enabled: !!here && courier.available,
+    refetchInterval: 20000, // couriers can't subscribe to other orders' rows, so poll the board
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("open_deliveries", { _lat: here!.lat, _lng: here!.lng });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  async function accept(orderId: string) {
+    setTaking(orderId);
+    const { data: ok, error } = await supabase.rpc("accept_delivery", { _order: orderId });
+    setTaking(null);
+    if (error) { toast.error(error.message); return; }
+    if (!ok) toast.error("Outro entregador pegou essa entrega primeiro.");
+    else toast.success("Entrega aceita! Vá até a loja para coletar.");
+    qc.invalidateQueries({ queryKey: ["open-deliveries"] });
+    qc.invalidateQueries({ queryKey: ["courier-orders", courier.id] });
+  }
+  return (
+    <section className="mt-6">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-bold">Entregas disponíveis</h2>
+        {courier.available && <Button size="sm" variant="ghost" onClick={() => refetch()} disabled={isFetching} aria-label="Atualizar">
+          {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </Button>}
+      </div>
+      {!courier.available ? (
+        <p className="mt-2 rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Fique <b>Disponível</b> no topo para ver e aceitar entregas perto de você.</p>
+      ) : !data ? (
+        <p className="mt-2 text-sm text-muted-foreground">Buscando entregas perto de você…</p>
+      ) : data.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">Nenhuma entrega aberta agora. A lista atualiza sozinha a cada 20 segundos.</p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {data.map((d) => (
+            <div key={d.order_id} className="rounded-2xl border-2 border-primary/30 bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 font-bold"><Store className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{d.store_name}</span></p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">{d.store_address}</p>
+                </div>
+                <p className="shrink-0 text-right"><span className="block text-xs text-muted-foreground">Você ganha</span><span className="font-display text-2xl font-extrabold text-success">{brl(Number(d.earning))}</span></p>
+              </div>
+              <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                <span className="flex items-center gap-1"><MapPin className="h-4 w-4 text-primary" />{Number(d.km_to_store).toFixed(1)} km até a loja</span>
+                {d.delivery_km != null && <span className="flex items-center gap-1"><Bike className="h-4 w-4 text-primary" />{Number(d.delivery_km).toFixed(1)} km de entrega</span>}
+                <span className="text-muted-foreground">{d.status === "pago" ? "Loja vai aceitar" : "Em preparo"}</span>
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button className="flex-1" onClick={() => accept(d.order_id)} disabled={taking !== null}>
+                  {taking === d.order_id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aceitar entrega"}
+                </Button>
+                <Button asChild variant="outline"><a href={`https://www.google.com/maps/dir/?api=1&destination=${d.store_lat},${d.store_lng}`} target="_blank" rel="noreferrer">Ver loja no mapa</a></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -5,7 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRoles } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
-import { courierDocUrl, pendingPayouts, sendPayout } from "@/lib/payouts.functions";
+import { courierDocUrl, pendingCourierPayouts, pendingPayouts, sendCourierPayout, sendPayout } from "@/lib/payouts.functions";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { brl } from "@/lib/market";
 
 export const Route = createFileRoute("/_authenticated/admin")({
@@ -37,9 +38,16 @@ function Admin() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="text-3xl font-extrabold">Entregadores</h1>
-      <p className="text-muted-foreground">Confira nome, CPF e placa antes de aprovar.</p>
-      <div className="mt-6 space-y-3">
+      <h1 className="text-3xl font-extrabold">Administração</h1>
+      <Tabs defaultValue="entregadores" className="mt-4">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start">
+          <TabsTrigger value="entregadores">Entregadores</TabsTrigger>
+          <TabsTrigger value="repasse-lojas">Repasse lojas</TabsTrigger>
+          <TabsTrigger value="repasse-entregadores">Repasse entregadores</TabsTrigger>
+        </TabsList>
+        <TabsContent value="entregadores">
+      <p className="mt-2 text-muted-foreground">Confira nome, CPF e placa antes de aprovar.</p>
+      <div className="mt-4 space-y-3">
         {data?.map((c) => (
           <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
             <div className="flex-1">
@@ -55,7 +63,10 @@ function Admin() {
         ))}
         {data?.length === 0 && <p className="text-muted-foreground">Nenhum entregador cadastrado.</p>}
       </div>
-      <Payouts />
+        </TabsContent>
+        <TabsContent value="repasse-lojas"><Payouts /></TabsContent>
+        <TabsContent value="repasse-entregadores"><CourierPayouts /></TabsContent>
+      </Tabs>
     </main>
   );
 }
@@ -78,9 +89,9 @@ function Payouts() {
     qc.invalidateQueries({ queryKey: ["pending-payouts"] });
   }
   return (
-    <section className="mt-10">
+    <section className="mt-4">
       <h2 className="text-2xl font-extrabold">Repasses às lojas</h2>
-      <p className="text-muted-foreground">Vendas entregues ainda não repassadas (já descontada a comissão).</p>
+      <p className="text-muted-foreground">Vendas entregues e pagas ainda não repassadas (já descontadas a comissão, a taxa do Asaas e a entrega feita por entregador da plataforma).</p>
       <div className="mt-4 space-y-3">
         {data?.length === 0 && <p className="text-muted-foreground">Nada pendente.</p>}
         {data?.map((p) => (
@@ -89,6 +100,37 @@ function Payouts() {
               <p className="text-sm text-muted-foreground">{p.count} pedidos · Pix: {p.pixKey ? `${p.pixType} ${p.pixKey}` : "não cadastrado"}</p></div>
             <span className="text-lg font-bold">{brl(p.amount)}</span>
             <Button size="sm" disabled={!p.pixKey} onClick={() => pay(p.storeId, p.name, p.amount)}>Pagar via Pix</Button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CourierPayouts() {
+  const list = useServerFn(pendingCourierPayouts);
+  const send = useServerFn(sendCourierPayout);
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["pending-courier-payouts"], queryFn: () => list() });
+  const total = (data ?? []).reduce((t, c) => t + c.amount, 0);
+  async function pay(courierId: string, name: string, amount: number) {
+    if (!window.confirm(`Enviar Pix de ${brl(amount)} para ${name}?`)) return;
+    try { await send({ data: { courierId } }); toast.success("Pix enviado"); } catch (e) { toast.error(e instanceof Error ? e.message : "Falha no Pix"); }
+    qc.invalidateQueries({ queryKey: ["pending-courier-payouts"] });
+  }
+  return (
+    <section className="mt-4">
+      <h2 className="text-2xl font-extrabold">Repasse aos entregadores</h2>
+      <p className="text-muted-foreground">Taxas de entrega de pedidos concluídos (com PIN) e pagos, feitos por entregadores da plataforma. Juntar a semana num Pix só economiza tarifa do Asaas.</p>
+      {data && data.length > 0 && <p className="mt-3 font-semibold">Total a pagar: {brl(total)}</p>}
+      <div className="mt-4 space-y-3">
+        {data?.length === 0 && <p className="text-muted-foreground">Nada pendente.</p>}
+        {data?.map((c) => (
+          <div key={c.courierId} className="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
+            <div className="flex-1"><p className="font-bold">{c.name}</p>
+              <p className="text-sm text-muted-foreground">{c.count} entrega{c.count > 1 ? "s" : ""} · {c.phone} · Pix: {c.pixKey ? `${c.pixType ?? "tipo não informado"} ${c.pixKey}` : "não cadastrado"}</p></div>
+            <span className="text-lg font-bold">{brl(c.amount)}</span>
+            <Button size="sm" disabled={!c.pixKey || !c.pixType} onClick={() => pay(c.courierId, c.name, c.amount)}>Pagar via Pix</Button>
           </div>
         ))}
       </div>

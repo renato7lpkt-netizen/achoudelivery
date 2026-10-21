@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      courier_payouts: {
+        Row: {
+          amount: number
+          asaas_transfer_id: string | null
+          courier_id: string
+          created_at: string
+          error: string | null
+          id: string
+          orders_count: number
+          pix_key: string
+          status: string
+        }
+        Insert: {
+          amount: number
+          asaas_transfer_id?: string | null
+          courier_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          orders_count?: number
+          pix_key: string
+          status?: string
+        }
+        Update: {
+          amount?: number
+          asaas_transfer_id?: string | null
+          courier_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          orders_count?: number
+          pix_key?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_payouts_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       couriers: {
         Row: {
           approval_status: string
@@ -25,6 +69,7 @@ export type Database = {
           name: string
           phone: string
           pix_key: string | null
+          pix_key_type: string | null
           plate: string | null
           reject_reason: string | null
           user_id: string
@@ -40,6 +85,7 @@ export type Database = {
           name: string
           phone: string
           pix_key?: string | null
+          pix_key_type?: string | null
           plate?: string | null
           reject_reason?: string | null
           user_id: string
@@ -55,6 +101,7 @@ export type Database = {
           name?: string
           phone?: string
           pix_key?: string | null
+          pix_key_type?: string | null
           plate?: string | null
           reject_reason?: string | null
           user_id?: string
@@ -143,6 +190,8 @@ export type Database = {
           courier_lat: number | null
           courier_lng: number | null
           courier_loc_at: string | null
+          courier_payout: number
+          courier_payout_id: string | null
           created_at: string
           customer_id: string
           customer_name: string
@@ -179,6 +228,8 @@ export type Database = {
           courier_lat?: number | null
           courier_lng?: number | null
           courier_loc_at?: string | null
+          courier_payout?: number
+          courier_payout_id?: string | null
           created_at?: string
           customer_id: string
           customer_name: string
@@ -215,6 +266,8 @@ export type Database = {
           courier_lat?: number | null
           courier_lng?: number | null
           courier_loc_at?: string | null
+          courier_payout?: number
+          courier_payout_id?: string | null
           created_at?: string
           customer_id?: string
           customer_name?: string
@@ -677,6 +730,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_delivery: { Args: { _order: string }; Returns: boolean }
       confirm_delivery: {
         Args: { _order: string; _pin: string }
         Returns: boolean
@@ -704,6 +758,21 @@ export type Database = {
         }[]
       }
       my_courier_id: { Args: never; Returns: string }
+      open_deliveries: {
+        Args: { _lat: number; _lng: number }
+        Returns: {
+          created_at: string
+          delivery_km: number
+          earning: number
+          km_to_store: number
+          order_id: string
+          status: string
+          store_address: string
+          store_lat: number
+          store_lng: number
+          store_name: string
+        }[]
+      }
       order_party: { Args: { _order: string }; Returns: string }
       owns_store: { Args: { _store: string }; Returns: boolean }
       rate_order: {

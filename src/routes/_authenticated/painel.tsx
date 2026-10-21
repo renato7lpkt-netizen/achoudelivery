@@ -304,6 +304,9 @@ function Orders({ store }: { store: Store }) {
               </select>
             </div>
           )}
+          {!store.own_couriers && !o.courier_id && ["pago", "preparando"].includes(o.status) && (
+            <p className="mt-1 text-xs text-muted-foreground">Aguardando um entregador do AchouDelivery aceitar (ou escolha um acima).</p>
+          )}
           {o.status === "saiu_entrega" && (
             <div className="mt-2 flex items-center gap-2 text-sm">
               <span className="font-semibold">PIN do cliente:</span>

@@ -23,6 +23,20 @@ export function splitFees(total: number, method: PayMethod) {
   return { gateway, platform, payout, retainedPct: total > 0 ? ((gateway + platform) / total) * 100 : 0 };
 }
 
+/**
+ * Who gets what from one order. A platform courier (store without own couriers) earns the whole
+ * delivery fee, and the commission is then charged on products only; the store pays the gateway fee.
+ */
+export function splitOrder(subtotal: number, fee: number, method: PayMethod, ownCouriers: boolean) {
+  const total = r2(subtotal + fee);
+  const f = ASAAS_FEES[method];
+  const gateway = r2(total * f.rate + f.fixed);
+  const courier = ownCouriers ? 0 : r2(fee);
+  const platform = r2((ownCouriers ? total : subtotal) * PLATFORM_RATE);
+  const payout = r2(total - gateway - platform - courier);
+  return { gateway, platform, payout, courier };
+}
+
 export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;

@@ -13,4 +13,6 @@
 - Admin = row in `user_roles` (role 'admin'), checked with `has_role`; header roles come from `useRoles` in `src/lib/roles.ts`.
 - Phone product photos are compressed client-side (`src/lib/image.ts`) and stored as data URLs in `products.image_url` — public buckets are blocked.
 - Courier documents live in private bucket `courier-docs/<user_id>/…`; admins view via signed URL from `courierDocUrl` — never public links.
+- Platform couriers (stores with `own_couriers = false`): `splitOrder` in `src/lib/market.ts` gives the whole delivery fee to `orders.courier_payout` and charges commission on products only. Couriers see paid unassigned orders via the `open_deliveries` RPC (nearest store first, no customer data) and take one with `accept_delivery` (atomic). Admin pays them from the "Repasse entregadores" tab (`sendCourierPayout`, claims `courier_payout_id`).
+- `orders_guard`/`stores_guard` must stay SECURITY INVOKER: inside SECURITY DEFINER `current_user` is the owner, so the `current_user = 'authenticated'` check never fires (that bug let clients edit totals/payouts until migration 0013).
 - Manual Pix payouts: `src/lib/payouts.functions.ts` groups delivered orders with `payout_id IS NULL`, marks them before calling Asaas `/transfers`, and rolls back on failure.
