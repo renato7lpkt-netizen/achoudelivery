@@ -33,9 +33,9 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-export const FREE_KM_OWN = 3;
+export const FREE_KM_OWN = 1;
 
-// Loja com entregador próprio: grátis até 3 km, depois R$/km só no excedente.
+// Loja com entregador próprio: grátis até FREE_KM_OWN km, depois R$/km só no excedente.
 // Entregador da plataforma: R$/km em qualquer distância.
 export function deliveryFee(
   store: { delivery_base_fee: number; delivery_fee_per_km: number; own_couriers?: boolean },

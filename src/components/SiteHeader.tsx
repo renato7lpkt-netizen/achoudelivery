@@ -23,11 +23,11 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-1">
           {user ? (
             <>
-              <Button asChild variant="ghost" size="sm"><Link to="/meus-pedidos"><Receipt className="mr-1 h-4 w-4" /><span className="hidden sm:inline">Pedidos</span></Link></Button>
-              <Button asChild variant="ghost" size="sm"><Link to="/minha-conta"><User className="mr-1 h-4 w-4" /><span className="hidden sm:inline">Minha conta</span></Link></Button>
-              {roles?.isCourier && <Button asChild variant="ghost" size="sm"><Link to="/entregador"><Bike className="mr-1 h-4 w-4" />Entregador</Link></Button>}
-              {roles?.isStore && <Button asChild variant="ghost" size="sm"><Link to="/painel"><Store className="mr-1 h-4 w-4" />Minha loja</Link></Button>}
-              {roles?.isAdmin && <Button asChild variant="ghost" size="sm"><Link to="/admin"><ShieldCheck className="mr-1 h-4 w-4" />Admin</Link></Button>}
+              <Button asChild variant="ghost" size="sm" className="hidden md:inline-flex"><Link to="/meus-pedidos"><Receipt className="mr-1 h-4 w-4" /><span className="hidden sm:inline">Pedidos</span></Link></Button>
+              <Button asChild variant="ghost" size="sm" className="hidden md:inline-flex"><Link to="/minha-conta"><User className="mr-1 h-4 w-4" /><span className="hidden sm:inline">Minha conta</span></Link></Button>
+              {roles?.isCourier && <Button asChild variant="ghost" size="sm"><Link aria-label="Entregador" to="/entregador"><Bike className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Entregador</span></Link></Button>}
+              {roles?.isStore && <Button asChild variant="ghost" size="sm"><Link aria-label="Minha loja" to="/painel"><Store className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Minha loja</span></Link></Button>}
+              {roles?.isAdmin && <Button asChild variant="ghost" size="sm"><Link aria-label="Admin" to="/admin"><ShieldCheck className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Admin</span></Link></Button>}
               <Button variant="ghost" size="icon" aria-label="Sair" onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/", replace: true }); }}>
                 <LogOut className="h-4 w-4" />
               </Button>

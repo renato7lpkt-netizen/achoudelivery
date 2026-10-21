@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import { CartProvider } from "@/lib/cart";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CartBar } from "@/components/CartBar";
+import { BottomNav } from "@/components/BottomNav";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -148,6 +149,7 @@ function RootComponent() {
         <SiteHeader />
         <Outlet />
         <CartBar />
+        <BottomNav />
         <Toaster richColors position="top-center" />
       </CartProvider>
     </QueryClientProvider>

@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { ShoppingBag, Store, ChevronRight } from "lucide-react";
 import { useCart } from "@/lib/cart";
+import { bottomNavVisible } from "@/components/BottomNav";
 import { brl } from "@/lib/market";
 
 /** Faixa fixa no rodapé com o carrinho: abrir a loja ou fechar o pedido. */
@@ -9,10 +10,12 @@ export function CartBar() {
   const { pathname } = useLocation();
   if (!cart || count === 0 || pathname.startsWith("/checkout") || pathname.startsWith("/pedido")) return null;
   const inStore = pathname === `/loja/${cart.storeSlug}`;
+  // On phones the tab bar sits at the very bottom, so the cart rides just above it.
+  const aboveNav = bottomNavVisible(pathname);
   return (
     <>
       <div className="h-24" aria-hidden />
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 p-3 shadow-pop backdrop-blur" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+      <div className={`fixed inset-x-0 z-50 border-t bg-background/95 p-3 shadow-pop backdrop-blur md:bottom-0 ${aboveNav ? "bottom-16" : "bottom-0"}`} style={aboveNav ? undefined : { paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
         <div className="mx-auto flex max-w-3xl items-center gap-2">
           {!inStore && (
             <Link to="/loja/$slug" params={{ slug: cart.storeSlug }} className="flex min-w-0 items-center gap-2 rounded-xl border bg-card px-3 py-3 text-sm font-semibold hover:border-primary">
