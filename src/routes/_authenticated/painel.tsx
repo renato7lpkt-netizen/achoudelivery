@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing } from "lucide-react";
+import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing, Camera, ImageUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { CATEGORIES, FREE_KM_OWN, ORDER_STATUS, WEEKDAYS, brl, geocode, isOpenNow, isStorePaused, splitFees } from "@/lib/market";
@@ -12,7 +12,7 @@ import { OrderChat } from "@/components/OrderChat";
 import { PushButton } from "@/components/PushButton";
 import { notifyOrderStatus } from "@/lib/push.functions";
 import { ShareLocation } from "@/components/LiveTracking";
-import { compressImage } from "@/lib/image";
+import { compressImage, squareImage } from "@/lib/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -122,7 +122,7 @@ function CreateStore({ userId }: { userId: string }) {
           <div className="sm:col-span-2"><Label>Foto da loja</Label>
             <div className="flex items-center gap-3">
               {f.cover_url && <img src={f.cover_url} alt="" className="h-16 w-28 rounded-lg object-cover" />}
-              <PhotoButton label="Tirar/escolher foto" onPick={(u) => setF({ ...f, cover_url: u })} />
+              <PhotoChoice onPick={(u) => setF({ ...f, cover_url: u })} />
             </div>
             <Input className="mt-2" value={f.cover_url.startsWith("data:") ? "" : f.cover_url} onChange={set("cover_url")} placeholder="ou cole um link https://…" /></div>
         </fieldset>
@@ -370,7 +370,7 @@ function Products({ store }: { store: Store }) {
         <div><Label>Foto</Label>
           <div className="flex items-center gap-2">
             {f.image_url && <img src={f.image_url} alt="" className="h-12 w-12 rounded-lg object-cover" />}
-            <PhotoButton label="Tirar/escolher foto" onPick={(url) => setF({ ...f, image_url: url })} />
+            <PhotoChoice onPick={(url) => setF({ ...f, image_url: url })} />
           </div>
           <Input className="mt-2" value={f.image_url.startsWith("data:") ? "" : f.image_url} onChange={(e) => setF({ ...f, image_url: e.target.value })} placeholder="ou cole um link https://…" /></div>
         <Button className="w-full" type="submit"><Plus className="mr-1 h-4 w-4" />Adicionar</Button>
@@ -403,10 +403,19 @@ function Settings({ store }: { store: Store }) {
       <div><Label>Nome</Label><Input value={f.name} onChange={txt("name")} /></div>
       <div><Label>Categoria</Label><select className="h-10 w-full rounded-md border bg-card px-3" value={f.category} onChange={txt("category") as never}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
       <div className="md:col-span-2"><Label>Descrição</Label><Textarea value={f.description} onChange={txt("description")} /></div>
-      <div><Label>Foto da loja</Label>
-        <div className="flex items-center gap-2">
-          {f.cover_url && <img src={f.cover_url} alt="" className="h-10 w-16 rounded object-cover" />}
-          <PhotoButton label="Tirar/escolher foto" onPick={(u) => setF({ ...f, cover_url: u })} />
+      <div><Label>Logo da loja</Label>
+        <div className="flex items-center gap-3">
+          <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl border bg-accent font-display text-xl font-extrabold text-accent-foreground">
+            {f.logo_url ? <img src={f.logo_url} alt="Logo atual" className="h-full w-full object-cover" /> : f.name.charAt(0)}
+          </div>
+          <PhotoChoice square onPick={(u) => setF({ ...f, logo_url: u })} />
+          {f.logo_url && <Button type="button" variant="ghost" size="sm" onClick={() => setF({ ...f, logo_url: null })}>Remover</Button>}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">Aparece na lista de lojas. Use uma imagem quadrada; cortamos o centro.</p></div>
+      <div><Label>Capa da loja</Label>
+        <div className="flex items-center gap-3">
+          {f.cover_url && <img src={f.cover_url} alt="Capa atual" className="h-16 w-28 shrink-0 rounded-xl object-cover" />}
+          <PhotoChoice onPick={(u) => setF({ ...f, cover_url: u })} />
         </div>
         <Input className="mt-2" value={f.cover_url?.startsWith("data:") ? "" : f.cover_url ?? ""} onChange={txt("cover_url")} placeholder="ou cole um link https://…" /></div>
       <div><Label>Telefone</Label><Input value={f.phone ?? ""} onChange={txt("phone")} /></div>
@@ -557,16 +566,26 @@ function Team({ store }: { store: Store }) {
   );
 }
 
-function PhotoButton({ onPick, label = "Foto" }: { onPick: (url: string) => void; label?: string }) {
+function PhotoButton({ onPick, label = "Foto", capture, square = false }: { onPick: (url: string) => void; label?: React.ReactNode; capture?: boolean; square?: boolean }) {
   async function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
-    try { onPick(await compressImage(file)); toast.success("Foto pronta"); } catch { toast.error("Não foi possível ler a foto"); }
+    try { onPick(await (square ? squareImage(file) : compressImage(file))); toast.success("Foto pronta — salve para aplicar"); } catch { toast.error("Não foi possível ler a foto"); }
     e.target.value = "";
   }
   return (
-    <label className="inline-flex h-9 cursor-pointer items-center rounded-md border bg-card px-3 text-sm font-semibold">
-      {label}<input type="file" accept="image/*" className="hidden" onChange={pick} />
+    <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border bg-card px-3 text-sm font-semibold hover:border-primary">
+      {label}<input type="file" accept="image/*" capture={capture ? "environment" : undefined} className="hidden" onChange={pick} />
     </label>
+  );
+}
+
+/** Two explicit choices: open the camera, or pick a file/gallery image. */
+function PhotoChoice({ onPick, square = false }: { onPick: (url: string) => void; square?: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <PhotoButton capture square={square} onPick={onPick} label={<><Camera className="h-4 w-4" />Tirar foto</>} />
+      <PhotoButton square={square} onPick={onPick} label={<><ImageUp className="h-4 w-4" />Escolher arquivo</>} />
+    </div>
   );
 }
 

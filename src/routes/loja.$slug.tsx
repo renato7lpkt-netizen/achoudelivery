@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Clock, MapPin, Phone, Plus, Bike, Star, CloudRain } from "lucide-react";
 import { toast } from "sonner";
 import { storeQuery } from "@/lib/queries";
-import { FREE_KM_OWN, WEEKDAYS, brl, effectivePrice, etaMin, isOpenNow, isStorePaused, todayHours } from "@/lib/market";
+import { FREE_KM_OWN, WEEKDAYS, brl, deliveryFee, effectivePrice, etaMin, isOpenNow, isStorePaused, todayHours } from "@/lib/market";
 import { useCart } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -54,29 +54,49 @@ function StorePage() {
 
   return (
     <main className="pb-16">
-      <div className="relative h-56 bg-muted md:h-72">
-        {s.cover_url && <img src={s.cover_url} alt={s.name} className="h-full w-full object-cover" />}
-        <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 mx-auto max-w-6xl px-4 pb-5 text-background">
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${open ? "bg-success text-success-foreground" : "bg-background text-foreground"}`}>
+      <div className="relative h-36 bg-hero md:h-56">
+        {s.cover_url && <img src={s.cover_url} alt="" className="h-full w-full object-cover" />}
+      </div>
+
+      <div className="mx-auto max-w-6xl px-4">
+        <div className="relative z-10 -mt-10 flex items-end gap-4">
+          <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full border-4 border-background bg-accent font-display text-3xl font-extrabold text-accent-foreground shadow-pop">
+            {s.logo_url ? <img src={s.logo_url} alt={`Logo ${s.name}`} className="h-full w-full object-cover" /> : s.name.charAt(0)}
+          </div>
+          <span className={`mb-2 rounded-full px-3 py-1 text-xs font-bold ${open ? "bg-success text-success-foreground" : "bg-foreground text-background"}`}>
             {open ? "Aberta agora" : paused ? "Pausada pela loja" : "Fechada"}
           </span>
-          <h1 className="mt-2 text-3xl font-extrabold md:text-5xl">{s.name}</h1>
-          <p className="mt-1 flex items-center gap-3 text-sm">
-            {s.rating_count > 0 && <span className="flex items-center gap-1"><Star className="h-4 w-4 fill-current" />{Number(s.rating_avg).toFixed(1)} ({s.rating_count})</span>}
-            <span className="flex items-center gap-1"><Clock className="h-4 w-4" />~{etaMin(s)} min</span>
-          </p>
         </div>
+        <h1 className="mt-3 text-2xl font-extrabold md:text-4xl">{s.name}</h1>
+        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+          {s.rating_count > 0
+            ? <span className="flex items-center gap-1 font-semibold text-secondary-foreground"><Star className="h-4 w-4 fill-secondary text-secondary" />{Number(s.rating_avg).toFixed(1)} ({s.rating_count})</span>
+            : <span className="font-semibold text-primary">Novidade</span>}
+          <span aria-hidden>•</span><span>{s.category}</span>
+          <span aria-hidden>•</span><span className="flex items-center gap-1"><Clock className="h-4 w-4" />{etaMin(s)}-{etaMin(s) + 10} min</span>
+          {s.delivery_enabled && <><span aria-hidden>•</span><span className="flex items-center gap-1"><Bike className="h-4 w-4" />{s.own_couriers ? `Grátis até ${FREE_KM_OWN} km` : `${brl(deliveryFee(s, 0))} + ${brl(Number(s.delivery_fee_per_km))}/km`}</span></>}
+        </p>
+        {Number(s.min_order) > 0 && <p className="mt-1 text-sm text-muted-foreground">Pedido mínimo {brl(Number(s.min_order))}</p>}
       </div>
+
+      {sections.length > 1 && (
+        <nav aria-label="Seções do cardápio" className="sticky top-16 z-30 mt-4 border-b bg-background/95 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 [scrollbar-width:none]">
+            {sections.map((sec, i) => (
+              <a key={sec} href={`#secao-${i}`} className="shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary">{sec}</a>
+            ))}
+          </div>
+        </nav>
+      )}
 
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 md:grid-cols-[1fr_280px]">
         <div>
           {s.rain_mode && <p className="mb-3 flex items-center gap-2 rounded-xl bg-secondary p-3 text-sm text-secondary-foreground"><CloudRain className="h-4 w-4" />Alta demanda agora: as entregas podem levar um pouco mais.</p>}
-          <p className="text-muted-foreground">{s.description}</p>
+          {s.description && <p className="text-muted-foreground">{s.description}</p>}
           {topList.length > 0 && (
             <section className="mt-6">
               <h2 className="mb-3 text-xl font-bold">🔥 Mais pedidos</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
+              <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
                 {topList.map((p) => (
                   <button key={p.id} disabled={!open} onClick={() => addProduct(p)} className="w-36 shrink-0 rounded-2xl border bg-card p-2 text-left disabled:opacity-50">
                     <div className="h-24 overflow-hidden rounded-xl bg-muted">{p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}</div>
@@ -86,13 +106,13 @@ function StorePage() {
               </div>
             </section>
           )}
-          {sections.map((sec) => (
-            <section key={sec} className="mt-8">
-              <h2 className="mb-3 text-xl font-bold">{sec}</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
+          {sections.map((sec, i) => (
+            <section key={sec} id={`secao-${i}`} className="mt-8 scroll-mt-32">
+              <h2 className="mb-1 text-xl font-bold">{sec}</h2>
+              <div className="grid gap-x-6 sm:grid-cols-2">
                 {s.products.filter((p) => p.section === sec).map((p) => (
-                  <div key={p.id} className={`flex gap-3 rounded-2xl border bg-card p-3 ${p.available ? "" : "opacity-50"}`}>
-                    <div className="flex-1">
+                  <div key={p.id} className={`flex gap-3 border-b py-4 ${p.available ? "" : "opacity-50"}`}>
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-semibold">{p.name}</h3>
                       <p className="line-clamp-2 text-sm text-muted-foreground">{p.description}</p>
                       {effectivePrice(p) < Number(p.price) ? (

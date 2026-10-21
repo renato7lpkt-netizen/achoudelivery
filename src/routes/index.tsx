@@ -139,6 +139,8 @@ function Vitrine() {
       <footer className="mt-12 border-t py-6 text-center text-xs text-muted-foreground">
         <Link to="/privacidade" className="font-semibold hover:text-primary hover:underline">Política de Privacidade</Link>
         <span className="mx-2">·</span>
+        <Link to="/termos" className="font-semibold hover:text-primary hover:underline">Termos de Uso</Link>
+        <span className="mx-2">·</span>
         Seus dados são protegidos conforme a LGPD
       </footer>
     </main>
