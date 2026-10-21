@@ -5,6 +5,7 @@ import { LocateFixed, Loader2, Receipt, Save } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { geocode } from "@/lib/market";
+import { locateMe } from "@/lib/locate";
 import { isValidCpf, maskCpf, maskPhone } from "@/lib/br";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,10 +40,14 @@ function MyAccount() {
 
   async function locateGps() {
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (r) => { setPos({ lat: r.coords.latitude, lng: r.coords.longitude }); setLocating(false); toast.success("Localização atualizada"); },
-      () => { setLocating(false); toast.error("Não foi possível obter sua localização"); },
-    );
+    try {
+      const here = await locateMe();
+      setPos({ lat: here.lat, lng: here.lng });
+      if (here.address) setAddress(here.address);
+      toast.success(here.address ? "Localização encontrada. Confira o número e salve." : "Localização encontrada. Digite rua e número e salve.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não conseguimos sua localização.", { duration: 9000 });
+    } finally { setLocating(false); }
   }
 
   async function save(e: React.FormEvent) {

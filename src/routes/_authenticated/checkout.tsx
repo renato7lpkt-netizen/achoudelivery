@@ -2,13 +2,14 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, LocateFixed, Loader2, MapPin, User, ShoppingBag, CreditCard, QrCode, Store } from "lucide-react";
+import { Minus, Plus, LocateFixed, Loader2, MapPin, User, ShoppingBag, CreditCard, QrCode, Store, Home, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 import { useCart } from "@/lib/cart";
 import { storeQuery } from "@/lib/queries";
 import { FREE_KM_OWN, INSTALLMENT_MIN, brl, deliveryFee, geocode, haversineKm, isOpenNow, isStorePaused, maxInstallments } from "@/lib/market";
 import { createOrder } from "@/lib/orders.functions";
 import { isValidCpf, maskCpf, maskPhone } from "@/lib/br";
+import { locateMe } from "@/lib/locate";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,15 +34,19 @@ function Checkout() {
   const [locating, setLocating] = useState(false);
   const [busy, setBusy] = useState(false);
   const autoGeo = useRef(false);
+  // Address saved on the profile; while "useSaved" is on, the checkout delivers there without retyping.
+  const [saved, setSaved] = useState<{ address: string; lat: number | null; lng: number | null } | null>(null);
+  const [useSaved, setUseSaved] = useState(false);
 
   // Preenche o endereço salvo na conta (ou do cadastro) e calcula o frete sozinho
   useEffect(() => {
     (async () => {
       const { data: p } = await supabase.from("profiles").select("address, lat, lng, full_name, phone, cpf").eq("id", user.id).maybeSingle();
       setF((prev) => ({ ...prev, name: prev.name || p?.full_name || "", phone: prev.phone || p?.phone || "", cpf: prev.cpf || maskCpf(p?.cpf ?? "") }));
+      if (p?.address) { setSaved({ address: p.address, lat: p.lat, lng: p.lng }); setUseSaved(true); }
       const addr = p?.address || localStorage.getItem("achadao_address") || "";
       if (addr) setF((prev) => ({ ...prev, address: prev.address || addr }));
-      if (p?.lat != null && p?.lng != null) setPos({ lat: p.lat, lng: p.lng });
+      if (p?.address && p.lat != null && p.lng != null) setPos({ lat: p.lat, lng: p.lng });
     })();
   }, [user.id]);
 
@@ -62,18 +67,34 @@ function Checkout() {
 
   async function locateByAddress() {
     if (!f.address) { toast.error("Digite o endereço"); return; }
+    if (locating) return; // blur + button tap would otherwise search twice
     setLocating(true);
     const g = await geocode(f.address).catch(() => null);
     setLocating(false);
-    if (!g) { toast.error("Não achamos esse endereço. Tente só rua e bairro, o CEP, ou use sua localização."); return; }
+    if (!g) { toast.error("Não achamos esse endereço em Sete Lagoas. Confira o nome da rua, tente com o bairro ou o CEP, ou use sua localização."); return; }
     setPos(g);
   }
-  function locateGps() {
+  async function locateGps() {
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (p) => { setPos({ lat: p.coords.latitude, lng: p.coords.longitude }); setLocating(false); },
-      () => { setLocating(false); toast.error("Não foi possível obter sua localização"); },
-    );
+    try {
+      const here = await locateMe();
+      setPos({ lat: here.lat, lng: here.lng }); setUseSaved(false);
+      // Prefill the street so the customer only adds the house number.
+      if (here.address) { setF((prev) => ({ ...prev, address: here.address! })); toast.success("Localização encontrada. Confira o número da casa."); }
+      else toast.success("Localização encontrada. Digite rua e número para o entregador.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não conseguimos sua localização.", { duration: 9000 });
+    } finally { setLocating(false); }
+  }
+
+  function chooseSaved() {
+    if (!saved) return;
+    setUseSaved(true); setF((prev) => ({ ...prev, address: saved.address }));
+    if (saved.lat != null && saved.lng != null) setPos({ lat: saved.lat, lng: saved.lng });
+    else { setPos(null); autoGeo.current = false; }
+  }
+  function typeOther() {
+    setUseSaved(false); setF((prev) => ({ ...prev, address: "" })); setPos(null); autoGeo.current = true;
   }
 
   async function submit(e: React.FormEvent) {
@@ -136,13 +157,31 @@ function Checkout() {
 
         <Block icon={MapPin} title="Entrega">
           {store?.own_couriers && <p className="mb-3 rounded-xl bg-accent p-3 text-sm font-semibold">Entrega grátis até {FREE_KM_OWN} km nesta loja</p>}
-          <Label htmlFor="addr">Endereço de entrega</Label>
-          <Input id="addr" required value={f.address} onChange={(e) => { set("address")(e); setPos(null); autoGeo.current = false; }} placeholder="Rua, número, bairro ou CEP" autoComplete="street-address" />
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={locateByAddress} disabled={locating}>Calcular distância</Button>
-            <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
-            {locating && <Loader2 className="h-5 w-5 animate-spin" />}
-          </div>
+          {saved && useSaved ? (
+            <div className="flex items-start gap-3 rounded-xl border-2 border-primary bg-accent p-3">
+              <Home className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Endereço salvo</p>
+                <p className="font-semibold">{saved.address}</p>
+              </div>
+              {locating && <Loader2 className="h-5 w-5 shrink-0 animate-spin" />}
+            </div>
+          ) : (
+            <>
+              <Label htmlFor="addr">Endereço de entrega</Label>
+              <Input id="addr" required value={f.address} onChange={(e) => { set("address")(e); setPos(null); }} onBlur={() => { if (f.address && !pos) locateByAddress(); }} placeholder="Rua, número e bairro" autoComplete="street-address" />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={locateByAddress} disabled={locating}>Calcular distância</Button>
+                <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
+                {locating && <Loader2 className="h-5 w-5 animate-spin" />}
+              </div>
+            </>
+          )}
+          {saved && (
+            <Button type="button" variant="ghost" size="sm" className="mt-2 px-2 text-primary" onClick={useSaved ? typeOther : chooseSaved}>
+              {useSaved ? <><PencilLine className="mr-1 h-4 w-4" />Usar outro endereço</> : <><Home className="mr-1 h-4 w-4" />Usar endereço salvo</>}
+            </Button>
+          )}
           {km != null && <p className={`mt-2 text-sm ${outOfRange ? "text-destructive" : "text-muted-foreground"}`}>{km.toFixed(1)} km da loja {outOfRange && "— fora da área de entrega"}</p>}
           <Label htmlFor="notes" className="mt-4 block">Observações</Label>
           <Textarea id="notes" value={f.notes} onChange={set("notes")} placeholder="Ex.: sem cebola, apartamento 201, troco…" />

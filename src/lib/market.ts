@@ -113,15 +113,42 @@ export const ORDER_STATUS: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
-async function nominatim(text: string) {
+type LatLng = { lat: number; lng: number };
+
+/** Only accept hits inside the delivery city, so a same-named street elsewhere is never used. */
+const inCity = (p: LatLng) => haversineKm(CITY_CENTER, p) <= 30;
+
+async function nominatim(text: string): Promise<LatLng | null> {
   const q = encodeURIComponent(`${text}, Sete Lagoas, MG, Brasil`);
   const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${q}`);
   const j = (await res.json()) as Array<{ lat: string; lon: string }>;
-  return j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon) } : null;
+  const p = j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon) } : null;
+  return p && inCity(p) ? p : null;
 }
 
-/** Busca o endereço: completo → por CEP (ViaCEP) → sem número da casa → só bairro. */
-export async function geocode(address: string): Promise<{ lat: number; lng: number } | null> {
+// Typo-tolerant search: finds "Rua Claudionor de Castro Bahia" when the map says "Rua Doutor Claudionor de Castro Bahia".
+async function photon(text: string): Promise<LatLng | null> {
+  const q = encodeURIComponent(`${text} Sete Lagoas`);
+  const res = await fetch(`https://photon.komoot.io/api/?q=${q}&limit=5&lat=${CITY_CENTER.lat}&lon=${CITY_CENTER.lng}`);
+  const j = (await res.json()) as { features: Array<{ geometry: { coordinates: [number, number] }; properties: { city?: string } }> };
+  for (const f of j.features ?? []) {
+    const p = { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
+    if (f.properties.city === "Sete Lagoas" && inCity(p)) return p;
+  }
+  return null;
+}
+
+/** Correios street lookup: returns the neighbourhood so we can at least place the customer in the right bairro. */
+async function viacepBairro(street: string): Promise<string | null> {
+  const name = street.replace(/^(rua|r\.|avenida|av\.?|travessa|tv\.?|alameda|praça|pç\.?)\s+/i, "").trim();
+  if (name.length < 3) return null;
+  const res = await fetch(`https://viacep.com.br/ws/MG/Sete%20Lagoas/${encodeURIComponent(name)}/json/`);
+  const j = (await res.json()) as Array<{ bairro?: string }> | { erro?: boolean };
+  return Array.isArray(j) ? (j[0]?.bairro || null) : null;
+}
+
+/** Busca o endereço: completo → por CEP (ViaCEP) → sem número da casa → busca tolerante → bairro pela rua → só bairro. */
+export async function geocode(address: string): Promise<LatLng | null> {
   const { findCep, stripHouseNumber } = await import("./br");
   const tries: string[] = [address];
   const cep = findCep(address);
@@ -133,10 +160,36 @@ export async function geocode(address: string): Promise<{ lat: number; lng: numb
   }
   const noNum = stripHouseNumber(address.replace(/\b\d{5}-?\d{3}\b/, ""));
   tries.push(noNum);
-  const parts = noNum.split(",").map((s) => s.trim()).filter(Boolean);
-  if (parts.length > 1) tries.push(parts[parts.length - 1]!);
-  for (const t of [...new Set(tries.filter((t) => t.trim().length > 2))]) {
+  const unique = [...new Set(tries.filter((t) => t.trim().length > 2))];
+  for (const t of unique) {
     try { const g = await nominatim(t); if (g) return g; } catch { /* tenta o próximo */ }
   }
+  for (const t of [address, noNum]) {
+    try { const g = await photon(t); if (g) return g; } catch { /* tenta o próximo */ }
+  }
+  const parts = noNum.split(",").map((s) => s.trim()).filter(Boolean);
+  try {
+    const bairro = await viacepBairro(parts[0] ?? noNum);
+    if (bairro) { const g = (await nominatim(bairro)) ?? (await photon(bairro)); if (g) return g; }
+  } catch { /* ignora */ }
+  if (parts.length > 1) {
+    try { const g = await nominatim(parts[parts.length - 1]!); if (g) return g; } catch { /* ignora */ }
+  }
+  return null;
+}
+
+/** GPS position → "Rua X, 123, Bairro" to prefill the delivery address (Nominatim, then Photon as fallback). */
+export async function reverseGeocode(p: LatLng): Promise<string | null> {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${p.lat}&lon=${p.lng}`);
+    const a = ((await res.json()) as { address?: { road?: string; house_number?: string; suburb?: string; neighbourhood?: string } }).address;
+    if (a?.road) return [a.road, a.house_number, a.suburb ?? a.neighbourhood].filter(Boolean).join(", ");
+  } catch { /* tenta o Photon */ }
+  try {
+    const res = await fetch(`https://photon.komoot.io/reverse?lat=${p.lat}&lon=${p.lng}&limit=1`);
+    const f = ((await res.json()) as { features?: Array<{ properties: { street?: string; name?: string; housenumber?: string; district?: string } }> }).features?.[0]?.properties;
+    const road = f?.street ?? f?.name;
+    if (road) return [road, f?.housenumber, f?.district].filter(Boolean).join(", ");
+  } catch { /* ignora */ }
   return null;
 }
