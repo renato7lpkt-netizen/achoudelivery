@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, LocateFixed, Loader2 } from "lucide-react";
+import { Minus, Plus, LocateFixed, Loader2, MapPin, User, ShoppingBag, CreditCard, QrCode, Store } from "lucide-react";
 import { toast } from "sonner";
 import { useCart } from "@/lib/cart";
 import { storeQuery } from "@/lib/queries";
@@ -101,74 +101,121 @@ function Checkout() {
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
 
+  const total = subtotal + fee;
+  const canPay = !busy && open && !outOfRange;
+  const payLabel = `Pagar com ${method === "PIX" ? "Pix" : "cartão"}`;
+
+  const items = (
+    <ul className="divide-y">
+      {cart.items.map((i) => (
+        <li key={i.key ?? i.productId} className="flex items-center gap-3 py-3 text-sm">
+          <span className="min-w-0 flex-1"><span className="font-semibold">{i.name}</span>{i.optionsLabel && <span className="block text-xs text-muted-foreground">+ {i.optionsLabel}</span>}
+            <span className="block font-semibold text-primary">{brl(i.qty * i.price)}</span></span>
+          <div className="flex items-center rounded-full border">
+            <Button type="button" size="icon" variant="ghost" className="h-8 w-8 rounded-full" aria-label={`Menos ${i.name}`} onClick={() => setQty(i.key ?? i.productId, i.qty - 1)}><Minus className="h-3.5 w-3.5" /></Button>
+            <span className="w-6 text-center font-semibold">{i.qty}</span>
+            <Button type="button" size="icon" variant="ghost" className="h-8 w-8 rounded-full" aria-label={`Mais ${i.name}`} onClick={() => setQty(i.key ?? i.productId, i.qty + 1)}><Plus className="h-3.5 w-3.5" /></Button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+  const totals = (
+    <div className="space-y-1 text-sm">
+      <p className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{brl(subtotal)}</span></p>
+      <p className="flex justify-between text-muted-foreground"><span>Taxa de entrega</span><span className={km != null && fee === 0 ? "font-semibold text-success" : ""}>{km == null ? "Informe o endereço" : fee === 0 ? "Grátis" : brl(fee)}</span></p>
+      <p className="flex justify-between pt-2 text-lg font-bold"><span>Total</span><span>{brl(total)}</span></p>
+    </div>
+  );
+
   return (
-    <main className="mx-auto grid max-w-5xl gap-8 px-4 py-8 md:grid-cols-[1fr_340px]">
-      <form id="co" onSubmit={submit} className="space-y-6">
-        <h1 className="text-3xl font-extrabold">Finalizar pedido</h1>
+    <main className="mx-auto grid max-w-5xl gap-6 px-4 py-6 md:grid-cols-[1fr_340px] md:py-8">
+      <form id="co" onSubmit={submit} className="space-y-4">
+        <h1 className="text-2xl font-extrabold md:text-3xl">Finalizar pedido</h1>
         {!open && <p className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">A loja está fechada agora.</p>}
-        {store?.own_couriers && <p className="rounded-xl bg-accent p-3 text-sm font-semibold">Entrega grátis até {FREE_KM_OWN} km nesta loja</p>}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div><Label>Nome</Label><Input required value={f.name} onChange={set("name")} /></div>
-          <div><Label>Celular</Label><Input required inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: maskPhone(e.target.value) })} placeholder="(31) 9…" /></div>
-          <div className="sm:col-span-2"><Label>CPF (exigido para o pagamento)</Label><Input required inputMode="numeric" value={f.cpf} onChange={(e) => setF({ ...f, cpf: maskCpf(e.target.value) })} placeholder="000.000.000-00" />
-            {f.cpf.replace(/\D/g, "").length === 11 && !isValidCpf(f.cpf) && <p className="mt-1 text-xs text-destructive">CPF inválido</p>}</div>
-        </div>
-        {(
-          <div className="space-y-2">
-            <Label>Endereço de entrega</Label>
-            <Input required value={f.address} onChange={(e) => { set("address")(e); setPos(null); autoGeo.current = false; }} placeholder="Rua, número, bairro ou CEP" />
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={locateByAddress} disabled={locating}>Calcular distância</Button>
-              <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
-              {locating && <Loader2 className="h-5 w-5 animate-spin" />}
-            </div>
-            {km != null && <p className={`text-sm ${outOfRange ? "text-destructive" : "text-muted-foreground"}`}>{km.toFixed(1)} km da loja {outOfRange && "— fora da área de entrega"}</p>}
+
+        <Block icon={MapPin} title="Entrega">
+          {store?.own_couriers && <p className="mb-3 rounded-xl bg-accent p-3 text-sm font-semibold">Entrega grátis até {FREE_KM_OWN} km nesta loja</p>}
+          <Label htmlFor="addr">Endereço de entrega</Label>
+          <Input id="addr" required value={f.address} onChange={(e) => { set("address")(e); setPos(null); autoGeo.current = false; }} placeholder="Rua, número, bairro ou CEP" autoComplete="street-address" />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={locateByAddress} disabled={locating}>Calcular distância</Button>
+            <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
+            {locating && <Loader2 className="h-5 w-5 animate-spin" />}
           </div>
-        )}
-        <div><Label>Observações</Label><Textarea value={f.notes} onChange={set("notes")} placeholder="Ex.: sem cebola, troco…" /></div>
-        <div>
-          <Label>Pagamento</Label>
-          <div className="mt-1 grid grid-cols-2 gap-2">
-            {(["PIX", "CREDIT_CARD"] as const).map((m) => (
-              <button type="button" key={m} onClick={() => setMethod(m)} className={`rounded-xl border p-3 font-semibold ${method === m ? "border-primary bg-accent" : "bg-card"}`}>
-                {m === "PIX" ? "Pix" : "Cartão de crédito"}
-              </button>
-            ))}
+          {km != null && <p className={`mt-2 text-sm ${outOfRange ? "text-destructive" : "text-muted-foreground"}`}>{km.toFixed(1)} km da loja {outOfRange && "— fora da área de entrega"}</p>}
+          <Label htmlFor="notes" className="mt-4 block">Observações</Label>
+          <Textarea id="notes" value={f.notes} onChange={set("notes")} placeholder="Ex.: sem cebola, apartamento 201, troco…" />
+        </Block>
+
+        <Block icon={User} title="Seus dados">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><Label htmlFor="nome">Nome</Label><Input id="nome" required value={f.name} onChange={set("name")} autoComplete="name" /></div>
+            <div><Label htmlFor="cel">Celular</Label><Input id="cel" required inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: maskPhone(e.target.value) })} placeholder="(31) 9…" autoComplete="tel" /></div>
+            <div className="sm:col-span-2"><Label htmlFor="cpf">CPF (exigido para o pagamento)</Label><Input id="cpf" required inputMode="numeric" value={f.cpf} onChange={(e) => setF({ ...f, cpf: maskCpf(e.target.value) })} placeholder="000.000.000-00" />
+              {f.cpf.replace(/\D/g, "").length === 11 && !isValidCpf(f.cpf) && <p className="mt-1 text-xs text-destructive">CPF inválido</p>}</div>
           </div>
-          {method === "CREDIT_CARD" && (maxInstallments(subtotal + fee) > 1 ? (
+        </Block>
+
+        <Block icon={ShoppingBag} title="Pedido" className="md:hidden">
+          <p className="flex items-center gap-2 text-sm font-semibold"><Store className="h-4 w-4 text-primary" />{cart.storeName}</p>
+          {items}
+          <div className="border-t pt-3">{totals}</div>
+        </Block>
+
+        <Block icon={CreditCard} title="Pagamento">
+          <div className="grid grid-cols-2 gap-2">
+            {(["PIX", "CREDIT_CARD"] as const).map((m) => {
+              const Icon = m === "PIX" ? QrCode : CreditCard;
+              return (
+                <button type="button" key={m} onClick={() => setMethod(m)} aria-pressed={method === m}
+                  className={`flex items-center gap-2 rounded-xl border-2 p-3 text-left font-semibold transition ${method === m ? "border-primary bg-accent" : "border-border bg-card"}`}>
+                  <Icon className={`h-5 w-5 shrink-0 ${method === m ? "text-primary" : "text-muted-foreground"}`} />
+                  <span>{m === "PIX" ? "Pix" : "Cartão de crédito"}<span className="block text-xs font-normal text-muted-foreground">{m === "PIX" ? "Aprovação na hora" : "Pague pelo link seguro"}</span></span>
+                </button>
+              );
+            })}
+          </div>
+          {method === "CREDIT_CARD" && (maxInstallments(total) > 1 ? (
             <div className="mt-2 grid grid-cols-2 gap-2">
               {[1, 2].map((n) => (
                 <button type="button" key={n} onClick={() => setInst(n)} className={`rounded-xl border p-2 text-sm font-semibold ${inst === n ? "border-primary bg-accent" : "bg-card"}`}>
-                  {n}x de {brl((subtotal + fee) / n)}
+                  {n}x de {brl(total / n)}
                 </button>
               ))}
             </div>
           ) : <p className="mt-2 text-xs text-muted-foreground">Cartão somente à vista (1x). Parcelamento em 2x para compras acima de {brl(INSTALLMENT_MIN)}.</p>)}
-        </div>
+        </Block>
       </form>
 
-      <aside className="h-fit rounded-2xl border bg-card p-4 md:sticky md:top-20">
-        <p className="font-bold">{cart.storeName}</p>
-        <ul className="mt-3 space-y-2">
-          {cart.items.map((i) => (
-            <li key={i.key ?? i.productId} className="flex items-center gap-2 text-sm">
-              <span className="flex-1">{i.name}{i.optionsLabel && <span className="block text-xs text-muted-foreground">+ {i.optionsLabel}</span>}</span>
-              <Button type="button" size="icon" variant="outline" className="h-7 w-7" onClick={() => setQty(i.key ?? i.productId, i.qty - 1)}><Minus className="h-3 w-3" /></Button>
-              <span className="w-5 text-center">{i.qty}</span>
-              <Button type="button" size="icon" variant="outline" className="h-7 w-7" onClick={() => setQty(i.key ?? i.productId, i.qty + 1)}><Plus className="h-3 w-3" /></Button>
-              <span className="w-20 text-right">{brl(i.qty * i.price)}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-4 space-y-1 border-t pt-3 text-sm">
-          <p className="flex justify-between"><span>Subtotal</span><span>{brl(subtotal)}</span></p>
-          <p className="flex justify-between"><span>Entrega</span><span>{km == null ? "—" : fee === 0 ? "Grátis" : brl(fee)}</span></p>
-          <p className="flex justify-between pt-2 text-lg font-bold"><span>Total</span><span>{brl(subtotal + fee)}</span></p>
-        </div>
-        <Button form="co" type="submit" className="mt-4 w-full shadow-pop" size="lg" disabled={busy || !open || !!outOfRange}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : `Pagar com ${method === "PIX" ? "Pix" : "cartão"}`}
+      <aside className="hidden h-fit rounded-2xl border bg-card p-4 md:sticky md:top-20 md:block">
+        <p className="flex items-center gap-2 font-bold"><Store className="h-4 w-4 text-primary" />{cart.storeName}</p>
+        {items}
+        <div className="border-t pt-3">{totals}</div>
+        <Button form="co" type="submit" className="mt-4 w-full shadow-pop" size="lg" disabled={!canPay}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : payLabel}
         </Button>
       </aside>
+
+      {/* Phones: total and pay button always within reach, like a native checkout. */}
+      <div className="h-20 md:hidden" aria-hidden />
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 backdrop-blur md:hidden" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+        <div className="mx-auto flex max-w-xl items-center gap-3">
+          <div className="leading-tight"><p className="text-xs text-muted-foreground">Total</p><p className="font-display text-xl font-extrabold">{brl(total)}</p></div>
+          <Button form="co" type="submit" size="lg" className="flex-1 shadow-pop" disabled={!canPay}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : payLabel}
+          </Button>
+        </div>
+      </div>
     </main>
+  );
+}
+
+function Block({ icon: Icon, title, className = "", children }: { icon: React.ComponentType<{ className?: string }>; title: string; className?: string; children: React.ReactNode }) {
+  return (
+    <section className={`rounded-2xl border bg-card p-4 ${className}`}>
+      <h2 className="mb-3 flex items-center gap-2 text-base font-bold"><Icon className="h-5 w-5 text-primary" />{title}</h2>
+      {children}
+    </section>
   );
 }

@@ -85,13 +85,13 @@ function Vitrine() {
   return (
     <main>
       <section className="bg-hero text-primary-foreground">
-        <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
-          <p className="mb-2 inline-flex items-center gap-1 rounded-full bg-background/15 px-3 py-1 text-sm">
+        <div className="mx-auto max-w-6xl px-4 py-5 md:py-16">
+          <p className="mb-2 inline-flex items-center gap-1 rounded-full bg-background/15 px-3 py-1 text-sm font-semibold">
             <MapPin className="h-4 w-4" />{usingGps ? "Perto de você" : "Sete Lagoas · MG"}
           </p>
-          <h1 className="max-w-2xl text-4xl font-extrabold md:text-6xl">O melhor da cidade, chegando aí.</h1>
-          <p className="mt-3 max-w-xl text-lg opacity-90">Lojas de Sete Lagoas com entrega rápida na sua porta.</p>
-          <div className="relative mt-6 max-w-lg">
+          <h1 className="max-w-2xl text-2xl font-extrabold md:text-6xl">O melhor da cidade, chegando aí.</h1>
+          <p className="mt-3 hidden max-w-xl text-lg opacity-90 md:block">Lojas de Sete Lagoas com entrega rápida na sua porta.</p>
+          <div className="relative mt-4 max-w-lg md:mt-6">
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
             <Input id="busca" ref={searchRef} type="search" enterKeyHint="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar loja ou produto (ex.: pizza, açaí)…" className="h-12 rounded-full bg-card pl-12 text-foreground" />
           </div>

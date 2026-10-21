@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
-import { Copy, ExternalLink, RefreshCw, Star, KeyRound } from "lucide-react";
+import { Copy, ExternalLink, RefreshCw, Star, KeyRound, Receipt, CheckCircle2, ChefHat, Bike, PackageCheck, XCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,7 +40,7 @@ function OrderPage() {
     <main className="mx-auto max-w-xl px-4 py-10">
       <p className="text-sm text-muted-foreground">Pedido #{o.id.slice(0, 8)} · {o.stores?.name}</p>
       <h1 className="mt-1 text-3xl font-extrabold">{ORDER_STATUS[o.status] ?? o.status}</h1>
-      <Timeline status={o.status} />
+      <Timeline status={o.status} createdAt={o.created_at} deliveredAt={o.delivered_at} />
       {o.delivery_pin && ["pago", "preparando", "saiu_entrega"].includes(o.status) && (
         <div className="mt-6 flex items-center gap-4 rounded-2xl border-2 border-primary bg-accent p-4">
           <KeyRound className="h-8 w-8 text-primary" />
@@ -85,19 +85,45 @@ function OrderPage() {
   );
 }
 
-const STEPS = [["pago", "Confirmado"], ["preparando", "Em preparo"], ["saiu_entrega", "Saiu para entrega"], ["concluido", "Entregue"]] as const;
+const STEPS = [
+  { key: "aguardando_pagamento", label: "Pedido feito", hint: "Aguardando o pagamento", icon: Receipt },
+  { key: "pago", label: "Pagamento confirmado", hint: "A loja vai aceitar seu pedido", icon: CheckCircle2 },
+  { key: "preparando", label: "Em preparo", hint: "A loja está preparando tudo", icon: ChefHat },
+  { key: "saiu_entrega", label: "Saiu para entrega", hint: "O entregador está a caminho", icon: Bike },
+  { key: "concluido", label: "Entregue", hint: "Bom apetite!", icon: PackageCheck },
+] as const;
 
-function Timeline({ status }: { status: string }) {
-  if (status === "cancelado" || status === "aguardando_pagamento") return null;
-  const idx = STEPS.findIndex(([k]) => k === status);
+/** Vertical iFood-style tracker: done steps filled, current step pulsing, upcoming steps muted. */
+function Timeline({ status, createdAt, deliveredAt }: { status: string; createdAt: string; deliveredAt: string | null }) {
+  if (status === "cancelado") {
+    return (
+      <div className="mt-5 flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-destructive">
+        <XCircle className="h-6 w-6 shrink-0" />
+        <div><p className="font-bold">Pedido cancelado</p><p className="text-sm">Se você já pagou, entre em contato com a loja para combinar o estorno.</p></div>
+      </div>
+    );
+  }
+  const idx = Math.max(0, STEPS.findIndex((s) => s.key === status));
+  const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null);
   return (
-    <ol className="mt-5 grid grid-cols-4 gap-2">
-      {STEPS.map(([k, label], i) => (
-        <li key={k} className="text-center text-xs font-semibold">
-          <div className={`mb-1 h-2 rounded-full ${i <= idx ? "bg-primary" : "bg-muted"}`} />
-          <span className={i <= idx ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-        </li>
-      ))}
+    <ol className="mt-5 rounded-2xl border bg-card p-4">
+      {STEPS.map(({ key, label, hint, icon: Icon }, i) => {
+        const done = i < idx, current = i === idx;
+        const at = i === 0 ? time(createdAt) : key === "concluido" ? time(deliveredAt) : null;
+        return (
+          <li key={key} className="relative flex gap-3 pb-5 last:pb-0">
+            {i < STEPS.length - 1 && <span aria-hidden className={`absolute left-[17px] top-9 h-[calc(100%-2.25rem)] w-0.5 ${done ? "bg-primary" : "bg-border"}`} />}
+            <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-full ${done ? "bg-primary text-primary-foreground" : current ? "bg-primary text-primary-foreground ring-4 ring-primary/20" : "bg-muted text-muted-foreground"}`}>
+              {current && key !== "concluido" && <span aria-hidden className="absolute inset-0 animate-ping rounded-full bg-primary/30" />}
+              <Icon className="relative h-5 w-5" />
+            </span>
+            <div className="min-w-0 pt-1">
+              <p className={`font-semibold ${done || current ? "text-foreground" : "text-muted-foreground"}`}>{label}{at && <span className="ml-2 text-xs font-normal text-muted-foreground">{at}</span>}</p>
+              {current && <p className="text-sm text-muted-foreground">{hint}</p>}
+            </div>
+          </li>
+        );
+      })}
     </ol>
   );
 }
