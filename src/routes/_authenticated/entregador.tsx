@@ -54,6 +54,7 @@ function CourierTabs({ courier }: { courier: Courier }) {
   const { aba = "disponiveis" } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { data } = useCourierOrders(courier.id);
+  useCourierOrdersLive(courier.id);
   const active = data?.filter((o) => ACTIVE.includes(o.status)).length ?? 0;
   const go = (v: CourierTab) => navigate({ search: { aba: v }, replace: true });
   return (
@@ -78,19 +79,24 @@ function CourierTabs({ courier }: { courier: Courier }) {
   );
 }
 
-/** The courier's own orders, kept fresh by realtime plus a 10 s poll (realtime can drop on phones in the background). */
-function useCourierOrders(courierId: string) {
+/**
+ * Realtime refresh of the courier's own orders. Call it once per page (CourierTabs): supabase reuses a
+ * channel by name, and adding callbacks to an already subscribed channel throws and breaks the page.
+ */
+function useCourierOrdersLive(courierId: string) {
   const qc = useQueryClient();
-  const key = ["courier-orders", courierId];
   useEffect(() => {
     const ch = supabase.channel(`courier-${courierId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `courier_id=eq.${courierId}` }, () => qc.invalidateQueries({ queryKey: key }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `courier_id=eq.${courierId}` }, () => qc.invalidateQueries({ queryKey: ["courier-orders", courierId] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courierId]);
+  }, [courierId, qc]);
+}
+
+/** The courier's own orders, refreshed by useCourierOrdersLive plus a 10 s poll (realtime can drop on phones in the background). */
+function useCourierOrders(courierId: string) {
   return useQuery({
-    queryKey: key,
+    queryKey: ["courier-orders", courierId],
     refetchInterval: REFRESH_MS,
     queryFn: async () => (await supabase.from("orders").select(`${ORDER_COLS},order_items(*),stores(name,address,phone,lat,lng,own_couriers)` as const).eq("courier_id", courierId).order("created_at", { ascending: false }).limit(50)).data ?? [],
   });
