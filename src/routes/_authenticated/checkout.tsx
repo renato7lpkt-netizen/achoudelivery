@@ -6,11 +6,14 @@ import { Minus, Plus, LocateFixed, Loader2, MapPin, User, ShoppingBag, CreditCar
 import { toast } from "sonner";
 import { useCart } from "@/lib/cart";
 import { storeQuery } from "@/lib/queries";
-import { FREE_KM_OWN, INSTALLMENT_MIN, brl, deliveryFee, geocode, haversineKm, isOpenNow, isStorePaused, maxInstallments } from "@/lib/market";
+import { FREE_KM_OWN, INSTALLMENT_MIN, brl, deliveryFee, haversineKm, isOpenNow, isStorePaused, maxInstallments } from "@/lib/market";
+import { findAddress } from "@/lib/address";
 import { createOrder } from "@/lib/orders.functions";
 import { isValidCpf, maskCpf, maskPhone } from "@/lib/br";
 import { locateMe } from "@/lib/locate";
 import { GeoNote } from "@/components/GeoNote";
+import { AddressInput } from "@/components/AddressInput";
+import { PinMap } from "@/components/PinMap";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +59,7 @@ function Checkout() {
     if (autoGeo.current || !store || !f.address || pos) return;
     autoGeo.current = true;
     setLocating(true);
-    geocode(f.address).then((g) => { if (g) { setPos(g); setFound(g); } }).finally(() => setLocating(false));
+    findAddress(f.address).then((g) => { if (g) { setPos(g); setFound(g); } }).finally(() => setLocating(false));
   }, [store, f.address, pos]);
 
   if (!cart) return <main className="p-16 text-center"><p>Seu carrinho está vazio.</p><Link to="/" className="text-primary underline">Ver lojas</Link></main>;
@@ -67,11 +70,11 @@ function Checkout() {
   const outOfRange = fulfill === "delivery" && store && km != null && km > Number(store.delivery_max_km);
   const open = store ? isOpenNow(store.store_hours, isStorePaused(store)) : true;
 
-  async function locateByAddress() {
-    if (!f.address) { toast.error("Digite o endereço"); return; }
+  async function locateByAddress(text = f.address) {
+    if (!text) { toast.error("Digite o endereço"); return; }
     if (locating) return; // blur + button tap would otherwise search twice
     setLocating(true);
-    const g = await geocode(f.address).catch(() => null);
+    const g = await findAddress(text).catch(() => null);
     setLocating(false);
     if (!g) { setFound(null); toast.error("Não achamos esse endereço em Sete Lagoas. Confira o nome da rua, tente com o bairro ou o CEP, ou use sua localização."); return; }
     setPos(g); setFound(g);
@@ -172,9 +175,10 @@ function Checkout() {
           ) : (
             <>
               <Label htmlFor="addr">Endereço de entrega</Label>
-              <Input id="addr" required value={f.address} onChange={(e) => { set("address")(e); setPos(null); setFound(null); }} onBlur={() => { if (f.address && !pos) locateByAddress(); }} placeholder="Rua, número e bairro" autoComplete="street-address" />
+              <AddressInput id="addr" required value={f.address} onChange={(v) => { setF((prev) => ({ ...prev, address: v })); setPos(null); setFound(null); }}
+                onPick={(label) => locateByAddress(label)} onBlur={() => { if (f.address && !pos) locateByAddress(); }} />
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={locateByAddress} disabled={locating}>Calcular distância</Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => locateByAddress()} disabled={locating}>Calcular distância</Button>
                 <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
                 {locating && <Loader2 className="h-5 w-5 animate-spin" />}
               </div>
@@ -186,6 +190,7 @@ function Checkout() {
             </Button>
           )}
           {!useSaved && <GeoNote label={found?.label} approx={found?.approx} />}
+          {!useSaved && pos && <PinMap value={pos} onChange={(p) => { setPos(p); setFound({ label: "o ponto que você marcou", approx: false }); }} />}
           {km != null && <p className={`mt-2 text-sm ${outOfRange ? "text-destructive" : "text-muted-foreground"}`}>{km.toFixed(1)} km da loja {outOfRange && "— fora da área de entrega"}</p>}
           <Label htmlFor="notes" className="mt-4 block">Observações</Label>
           <Textarea id="notes" value={f.notes} onChange={set("notes")} placeholder="Ex.: sem cebola, apartamento 201, troco…" />

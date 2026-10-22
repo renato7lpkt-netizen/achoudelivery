@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { LocateFixed, Loader2, Receipt, Save } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { geocode } from "@/lib/market";
+import { findAddress } from "@/lib/address";
 import { locateMe } from "@/lib/locate";
 import { GeoNote } from "@/components/GeoNote";
+import { AddressInput } from "@/components/AddressInput";
+import { PinMap } from "@/components/PinMap";
 import { isValidCpf, maskCpf, maskPhone } from "@/lib/br";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +55,14 @@ function MyAccount() {
     } finally { setLocating(false); }
   }
 
+  async function pickSuggestion(label: string) {
+    setLocating(true);
+    const g = await findAddress(label).catch(() => null);
+    setLocating(false);
+    if (!g) { toast.error("Não achamos esse endereço no mapa. Use sua localização ou confira o nome da rua."); return; }
+    setPos({ lat: g.lat, lng: g.lng }); setFound(g);
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (cpf && !isValidCpf(cpf)) { toast.error("CPF inválido. Confira os 11 números."); return; }
@@ -60,7 +70,7 @@ function MyAccount() {
     try {
       let geo = pos;
       if (address && !geo) {
-        const g = await geocode(address).catch(() => null);
+        const g = await findAddress(address).catch(() => null);
         if (!g) { toast.error("Não achamos esse endereço em Sete Lagoas. Confira o nome da rua e o bairro."); setBusy(false); return; }
         geo = g; setPos(g); setFound(g);
         if (g.approx) toast.warning("Usamos um ponto aproximado do bairro. Confira o nome da rua.");
@@ -99,8 +109,9 @@ function MyAccount() {
         </div>
         <div className="space-y-2">
           <Label>Endereço de entrega</Label>
-          <Input value={address} onChange={(e) => { setAddress(e.target.value); setPos(null); setFound(null); }} placeholder="Rua, número e bairro" />
+          <AddressInput value={address} onChange={(v) => { setAddress(v); setPos(null); setFound(null); }} onPick={pickSuggestion} />
           <GeoNote label={found?.label} approx={found?.approx} />
+          {pos && <PinMap value={pos} onChange={(p) => { setPos(p); setFound({ label: "o ponto que você marcou", approx: false }); }} />}
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}>
               <LocateFixed className="mr-1 h-4 w-4" />Usar minha localização

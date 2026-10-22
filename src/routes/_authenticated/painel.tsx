@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing, Camera, ImageUp, Search, Loader2, Link2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import { CATEGORIES, FREE_KM_OWN, ORDER_STATUS, WEEKDAYS, brl, geocode, isOpenNow, isStorePaused, splitFees } from "@/lib/market";
+import { CATEGORIES, FREE_KM_OWN, ORDER_STATUS, WEEKDAYS, brl, isOpenNow, isStorePaused, splitFees } from "@/lib/market";
 import { printTicket, whatsappLink, whatsappRoute } from "@/lib/order-tools";
 import { LINK_UNITS, type LinkUnit, isLinkActive, linkMinutes, linkResult, timeLeft } from "@/lib/affiliation";
 import { useNow } from "@/hooks/use-now";
@@ -16,6 +16,7 @@ import { notifyOrderStatus } from "@/lib/push.functions";
 import { ShareLocation } from "@/components/LiveTracking";
 import { compressImage, squareImage } from "@/lib/image";
 import { locateMe } from "@/lib/locate";
+import { findAddress } from "@/lib/address";
 import { GeoNote } from "@/components/GeoNote";
 import { ORDER_COLS, STORE_COLS } from "@/lib/columns";
 import { summarizeEarnings } from "@/lib/earnings";
@@ -94,7 +95,7 @@ function CreateStore({ userId }: { userId: string }) {
   async function locate() {
     if (!f.address.trim()) { toast.error("Digite o endereço da loja"); return; }
     setFinding(true);
-    const g = await geocode(f.address).catch(() => null);
+    const g = await findAddress(f.address).catch(() => null);
     setFinding(false);
     if (!g) { toast.error("Endereço não encontrado em Sete Lagoas. Confira rua, número e bairro."); return; }
     setPos(g);
@@ -434,7 +435,7 @@ function Settings({ store }: { store: Store }) {
     let cur = f;
     if (f.address.trim() && f.address !== geoFor) {
       setFinding(true);
-      const g = await geocode(f.address).catch(() => null);
+      const g = await findAddress(f.address).catch(() => null);
       setFinding(false);
       if (!g) { toast.error("Não achamos o endereço da loja em Sete Lagoas. Confira e tente de novo."); return; }
       cur = { ...f, lat: g.lat, lng: g.lng };
@@ -449,7 +450,7 @@ function Settings({ store }: { store: Store }) {
   async function locate() {
     if (!f.address.trim()) { toast.error("Digite o endereço da loja"); return; }
     setFinding(true);
-    const g = await geocode(f.address).catch(() => null);
+    const g = await findAddress(f.address).catch(() => null);
     setFinding(false);
     if (!g) { toast.error("Endereço não encontrado em Sete Lagoas. Confira rua e bairro."); return; }
     setF({ ...f, lat: g.lat, lng: g.lng }); setGeoFor(f.address); setGeo(g);
