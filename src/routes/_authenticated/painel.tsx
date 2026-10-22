@@ -2,11 +2,13 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing, Camera, ImageUp, Search, Loader2 } from "lucide-react";
+import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing, Camera, ImageUp, Search, Loader2, Link2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { CATEGORIES, FREE_KM_OWN, ORDER_STATUS, WEEKDAYS, brl, geocode, isOpenNow, isStorePaused, splitFees } from "@/lib/market";
-import { printTicket, whatsappRoute } from "@/lib/order-tools";
+import { printTicket, whatsappLink, whatsappRoute } from "@/lib/order-tools";
+import { LINK_UNITS, type LinkUnit, isLinkActive, linkMinutes, linkResult, timeLeft } from "@/lib/affiliation";
+import { useNow } from "@/hooks/use-now";
 import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { PushButton } from "@/components/PushButton";
@@ -312,13 +314,14 @@ function Orders({ store }: { store: Store }) {
             <div className="mt-2 flex items-center gap-2 text-sm">
               <span className="font-semibold">Entregador:</span>
               <select className="h-9 rounded-md border bg-card px-2" value={o.courier_id ?? ""} onChange={(e) => assign(o.id, e.target.value)}>
-                <option value="">{store.own_couriers ? "Equipe própria" : "Nenhum"}</option>
+                <option value="">{store.own_couriers ? "Equipe própria (sem app)" : "Nenhum"}</option>
                 {couriers?.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.vehicle} · {c.phone}{c.available ? "" : " (indisponível)"}</option>)}
               </select>
+              {couriers?.length === 0 && <Link to="/painel" search={{ aba: "equipe" }} className="text-xs text-primary underline">Afiliar entregador com app</Link>}
             </div>
           )}
           {!store.own_couriers && !o.courier_id && ["pago", "preparando"].includes(o.status) && (
-            <p className="mt-1 text-xs text-muted-foreground">Aguardando um entregador do AchouDelivery aceitar (ou escolha um acima).</p>
+            <p className="mt-1 text-xs text-muted-foreground">Aguardando um entregador do AchouDelivery aceitar (ou escolha um entregador afiliado acima).</p>
           )}
           {o.status === "saiu_entrega" && (
             <div className="mt-2 flex items-center gap-2 text-sm">
@@ -639,6 +642,103 @@ function PromoEditor({ p, onSave }: { p: Tables<"products">; onSave: (patch: Par
   );
 }
 
+/**
+ * Couriers with the app who work for the store for a while: the courier shows a 6-digit code (Perfil tab of the
+ * courier app), the owner types it here and picks the period. Payment is agreed between them, outside the app.
+ */
+function Affiliates({ store }: { store: Store }) {
+  const qc = useQueryClient();
+  const key = ["store-links", store.id];
+  const { data } = useQuery({
+    queryKey: key,
+    refetchInterval: 60000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("store_links", { _store: store.id });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const now = useNow(30000);
+  const [code, setCode] = useState("");
+  const [found, setFound] = useState<{ name: string; vehicle: string; plate: string | null } | null>(null);
+  const [amount, setAmount] = useState("1");
+  const [unit, setUnit] = useState<LinkUnit>("dias");
+  const [busy, setBusy] = useState(false);
+  const active = data?.filter((l) => isLinkActive(l, now)) ?? [];
+  const past = data?.filter((l) => !isLinkActive(l, now)) ?? [];
+  const refresh = () => { qc.invalidateQueries({ queryKey: key }); qc.invalidateQueries({ queryKey: ["couriers"] }); };
+  async function lookup(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const { data, error } = await supabase.rpc("link_code_lookup", { _store: store.id, _code: code });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    const r = linkResult<{ name: string; vehicle: string; plate: string | null }>(data);
+    if ("error" in r) { toast.error(r.error); return; }
+    setFound(r);
+  }
+  async function link() {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("link_code_redeem", { _store: store.id, _code: code, _minutes: linkMinutes(Number(amount), unit) });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    const r = linkResult<{ link_id: string }>(data);
+    if ("error" in r) { toast.error(r.error); return; }
+    toast.success(`${found?.name ?? "Entregador"} afiliado à sua loja`);
+    setCode(""); setFound(null); refresh();
+  }
+  async function end(id: string, name: string) {
+    if (!window.confirm(`Encerrar a afiliação de ${name} agora?`)) return;
+    const { data: ok } = await supabase.rpc("link_end", { _link: id });
+    if (!ok) { toast.error("Não foi possível encerrar"); return; }
+    toast.success("Afiliação encerrada"); refresh();
+  }
+  return (
+    <section className="rounded-2xl border bg-card p-4">
+      <h2 className="flex items-center gap-2 text-lg font-bold"><Link2 className="h-5 w-5 text-primary" />Entregadores afiliados pelo app</h2>
+      <p className="mt-1 text-sm text-muted-foreground">O entregador gera um código de 6 números no app do Entregador (aba Perfil). Digite aqui e escolha por quanto tempo ele trabalha para a sua loja. Durante esse tempo você escolhe ele nos pedidos, e o pedido aparece no app dele. O pagamento é combinado direto entre vocês.</p>
+      {!found ? (
+        <form onSubmit={lookup} className="mt-3 flex gap-2">
+          <Input className="w-40 font-mono text-lg tracking-widest" inputMode="numeric" maxLength={6} placeholder="000000" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} aria-label="Código do entregador" />
+          <Button type="submit" disabled={busy || code.length !== 6}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar entregador"}</Button>
+        </form>
+      ) : (
+        <div className="mt-3 space-y-3 rounded-xl bg-accent p-3 text-sm">
+          <p><b>{found.name}</b> · {found.vehicle}{found.plate ? ` · ${found.plate}` : ""}</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div><Label>Trabalhar por</Label><Input className="w-20" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))} /></div>
+            <select className="h-10 rounded-md border bg-card px-3" value={unit} onChange={(e) => setUnit(e.target.value as LinkUnit)} aria-label="Unidade">
+              {(Object.keys(LINK_UNITS) as LinkUnit[]).map((u) => <option key={u} value={u}>{LINK_UNITS[u].label}</option>)}
+            </select>
+            <Button onClick={link} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Afiliar"}</Button>
+            <Button variant="ghost" onClick={() => { setFound(null); setCode(""); }}>Cancelar</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Máximo: 24 horas, 30 dias ou 8 semanas. Para renovar, peça um código novo.</p>
+        </div>
+      )}
+      {active.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {active.map((l) => (
+            <div key={l.link_id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">{l.name} <span className={l.available ? "text-success" : "text-muted-foreground"}>· {l.available ? "disponível" : "indisponível"}</span></p>
+                <p className="text-xs text-muted-foreground">{l.vehicle}{l.plate ? ` · ${l.plate}` : ""} · faltam {timeLeft(l.ends_at, now)} · {l.deliveries} entregas · {Number(l.km).toFixed(1)} km</p>
+              </div>
+              <Button asChild size="sm" variant="outline"><a href={whatsappLink(l.phone)} target="_blank" rel="noreferrer">WhatsApp</a></Button>
+              <Button size="sm" variant="ghost" onClick={() => end(l.link_id, l.name)}>Encerrar</Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {past.length > 0 && (
+        <ul className="mt-4 divide-y border-t text-sm">
+          {past.map((l) => <li key={l.link_id} className="flex justify-between gap-2 py-2"><span>{l.name} · até {new Date(l.ended_at ?? l.ends_at).toLocaleDateString("pt-BR")}</span><span className="text-muted-foreground">{l.deliveries} entregas · {Number(l.km).toFixed(1)} km</span></li>)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function Team({ store }: { store: Store }) {
   const qc = useQueryClient();
   const key = ["team", store.id];
@@ -651,24 +751,28 @@ function Team({ store }: { store: Store }) {
     setF({ name: "", whatsapp: "", plate: "" }); qc.invalidateQueries({ queryKey: key }); toast.success("Entregador adicionado");
   }
   return (
-    <div className="mt-4 grid gap-6 md:grid-cols-[1fr_320px]">
-      <div className="space-y-2">
-        {!store.own_couriers && <p className="rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Ative "Tenho entregador próprio" em Loja e entrega para oferecer frete grátis até {FREE_KM_OWN} km.</p>}
-        {data?.map((t) => (
-          <div key={t.id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
-            <div className="flex-1"><p className="font-semibold">{t.name}</p><p className="text-xs text-muted-foreground">{t.whatsapp}{t.plate ? ` · Placa ${t.plate}` : ""}</p></div>
-            <Button size="icon" variant="ghost" aria-label="Remover" onClick={async () => { await supabase.from("store_couriers").delete().eq("id", t.id); qc.invalidateQueries({ queryKey: key }); }}><Trash2 className="h-4 w-4" /></Button>
-          </div>
-        ))}
-        {data?.length === 0 && <p className="text-muted-foreground">Nenhum entregador cadastrado.</p>}
+    <div className="mt-4 space-y-6">
+      <Affiliates store={store} />
+      <h2 className="text-lg font-bold">Contatos de entregadores (sem app)</h2>
+      <div className="grid gap-6 md:grid-cols-[1fr_320px]">
+        <div className="space-y-2">
+          {!store.own_couriers && <p className="rounded-xl bg-secondary p-3 text-sm text-secondary-foreground">Ative "Tenho entregador próprio" em Loja e entrega para oferecer frete grátis até {FREE_KM_OWN} km.</p>}
+          {data?.map((t) => (
+            <div key={t.id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
+              <div className="flex-1"><p className="font-semibold">{t.name}</p><p className="text-xs text-muted-foreground">{t.whatsapp}{t.plate ? ` · Placa ${t.plate}` : ""}</p></div>
+              <Button size="icon" variant="ghost" aria-label="Remover" onClick={async () => { await supabase.from("store_couriers").delete().eq("id", t.id); qc.invalidateQueries({ queryKey: key }); }}><Trash2 className="h-4 w-4" /></Button>
+            </div>
+          ))}
+          {data?.length === 0 && <p className="text-muted-foreground">Nenhum entregador cadastrado.</p>}
+        </div>
+        <form onSubmit={add} className="h-fit space-y-3 rounded-2xl border bg-card p-4">
+          <p className="flex items-center gap-2 font-bold"><MessageCircle className="h-4 w-4" />Novo entregador</p>
+          <div><Label>Nome</Label><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+          <div><Label>WhatsApp</Label><Input required value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} placeholder="(31) 9…" /></div>
+          <div><Label>Placa da moto</Label><Input value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="ABC1D23" /></div>
+          <Button className="w-full" type="submit"><Plus className="mr-1 h-4 w-4" />Adicionar</Button>
+        </form>
       </div>
-      <form onSubmit={add} className="h-fit space-y-3 rounded-2xl border bg-card p-4">
-        <p className="flex items-center gap-2 font-bold"><MessageCircle className="h-4 w-4" />Novo entregador</p>
-        <div><Label>Nome</Label><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-        <div><Label>WhatsApp</Label><Input required value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} placeholder="(31) 9…" /></div>
-        <div><Label>Placa da moto</Label><Input value={f.plate} onChange={(e) => setF({ ...f, plate: e.target.value })} placeholder="ABC1D23" /></div>
-        <Button className="w-full" type="submit"><Plus className="mr-1 h-4 w-4" />Adicionar</Button>
-      </form>
     </div>
   );
 }

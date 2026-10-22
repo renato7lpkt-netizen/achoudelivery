@@ -735,6 +735,20 @@ export type Database = {
         Args: { _order: string; _pin: string }
         Returns: boolean
       }
+      courier_links: {
+        Args: never
+        Returns: {
+          deliveries: number
+          ended_at: string | null
+          ends_at: string
+          km: number
+          link_id: string
+          starts_at: string
+          store_address: string
+          store_name: string
+          store_phone: string | null
+        }[]
+      }
       courier_update_order: {
         Args: { _order: string; _status: string }
         Returns: undefined
@@ -746,6 +760,20 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_affiliated: {
+        Args: { _courier: string; _store: string }
+        Returns: boolean
+      }
+      link_code_create: {
+        Args: never
+        Returns: { code: string; expires_at: string }[]
+      }
+      link_code_lookup: { Args: { _code: string; _store: string }; Returns: Json }
+      link_code_redeem: {
+        Args: { _code: string; _minutes: number; _store: string }
+        Returns: Json
+      }
+      link_end: { Args: { _link: string }; Returns: boolean }
       list_couriers: {
         Args: never
         Returns: {
@@ -783,6 +811,23 @@ export type Database = {
       rate_order: {
         Args: { _order: string; _rating: number; _review: string }
         Returns: undefined
+      }
+      store_links: {
+        Args: { _store: string }
+        Returns: {
+          available: boolean
+          courier_id: string
+          deliveries: number
+          ended_at: string | null
+          ends_at: string
+          km: number
+          link_id: string
+          name: string
+          phone: string
+          plate: string | null
+          starts_at: string
+          vehicle: string
+        }[]
       }
       top_products: {
         Args: { _store: string }

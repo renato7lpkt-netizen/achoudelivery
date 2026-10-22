@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MapPin, Phone, Navigation, Store, Bike, RefreshCw, Loader2 } from "lucide-react";
+import { MapPin, Phone, Navigation, Store, Bike, RefreshCw, Loader2, Link2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { CITY_CENTER, ORDER_STATUS, brl } from "@/lib/market";
@@ -16,6 +16,9 @@ import { ShareLocation } from "@/components/LiveTracking";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { isLinkActive, timeLeft } from "@/lib/affiliation";
+import { whatsappLink } from "@/lib/order-tools";
+import { useNow } from "@/hooks/use-now";
 
 export const Route = createFileRoute("/_authenticated/entregador")({
   head: () => ({ meta: [{ title: "Entregadores — AchouDelivery" }, { name: "description", content: "Cadastre-se como entregador e receba entregas das lojas de Sete Lagoas." }, { property: "og:title", content: "Seja entregador no AchouDelivery" }, { property: "og:description", content: "Cadastro e painel de entregas." }] }),
@@ -69,11 +72,12 @@ function CourierTabs({ courier }: { courier: Courier }) {
         </TabsList>
         <TabsContent value="disponiveis">
           {active > 0 && <button onClick={() => go("minhas")} className="mt-4 w-full rounded-xl bg-primary p-3 text-left text-sm font-bold text-primary-foreground">Você tem {active} {active === 1 ? "entrega" : "entregas"} em andamento → ver</button>}
+          <LinkBanner onOpen={() => go("perfil")} />
           <OpenDeliveries courier={courier} onAccepted={() => go("minhas")} />
         </TabsContent>
         <TabsContent value="minhas"><Deliveries courier={courier} /></TabsContent>
         <TabsContent value="ganhos"><CourierEarnings courier={courier} /></TabsContent>
-        <TabsContent value="perfil"><div className="mt-4"><CourierForm userId={courier.user_id} courier={courier} /></div></TabsContent>
+        <TabsContent value="perfil"><div className="mt-4 space-y-6"><StoreLink /><CourierForm userId={courier.user_id} courier={courier} /></div></TabsContent>
       </Tabs>
     </>
   );
@@ -100,6 +104,97 @@ function useCourierOrders(courierId: string) {
     refetchInterval: REFRESH_MS,
     queryFn: async () => (await supabase.from("orders").select(`${ORDER_COLS},order_items(*),stores(name,address,phone,lat,lng,own_couriers)` as const).eq("courier_id", courierId).order("created_at", { ascending: false }).limit(50)).data ?? [],
   });
+}
+
+/** Links to stores (active first), polled so the code card turns into the link as soon as the store types it. */
+function useCourierLinks() {
+  return useQuery({
+    queryKey: ["courier-links"],
+    refetchInterval: REFRESH_MS,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("courier_links");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+function LinkBanner({ onOpen }: { onOpen: () => void }) {
+  const { data } = useCourierLinks();
+  const now = useNow(30000);
+  const l = data?.find((x) => isLinkActive(x, now));
+  if (!l) return null;
+  return (
+    <button onClick={onOpen} className="mt-4 flex w-full items-center gap-2 rounded-xl bg-accent p-3 text-left text-sm">
+      <Link2 className="h-4 w-4 shrink-0 text-primary" />
+      <span>Você está trabalhando para <b>{l.store_name}</b> · faltam {timeLeft(l.ends_at, now)}. As entregas dela aparecem em <b>Minhas</b>.</span>
+    </button>
+  );
+}
+
+/**
+ * Affiliation: the courier shows a one-time 6-digit code (10 min) and the store owner types it in the store app,
+ * choosing how long the courier works for the store. Payment is agreed directly with the store.
+ */
+function StoreLink() {
+  const qc = useQueryClient();
+  const { data: links } = useCourierLinks();
+  const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const now = useNow(code ? 1000 : 30000);
+  const active = links?.find((l) => isLinkActive(l, now));
+  const past = links?.filter((l) => l !== active) ?? [];
+  const codeLive = code && new Date(code.expires_at) > now;
+  useEffect(() => { if (active) setCode(null); }, [active]);
+  async function make() {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("link_code_create");
+    setBusy(false);
+    if (error || !data?.[0]) { toast.error(error?.message ?? "Não foi possível gerar o código"); return; }
+    setCode(data[0]);
+  }
+  async function end(id: string, store: string) {
+    if (!window.confirm(`Encerrar o trabalho para ${store} agora?`)) return;
+    const { data: ok } = await supabase.rpc("link_end", { _link: id });
+    if (!ok) { toast.error("Não foi possível encerrar"); return; }
+    toast.success("Afiliação encerrada"); qc.invalidateQueries({ queryKey: ["courier-links"] });
+  }
+  const secs = code ? Math.max(0, Math.ceil((new Date(code.expires_at).getTime() - now.getTime()) / 1000)) : 0;
+  return (
+    <section className="rounded-2xl border bg-card p-4">
+      <h2 className="flex items-center gap-2 text-lg font-bold"><Link2 className="h-5 w-5 text-primary" />Trabalhar para uma loja</h2>
+      {active ? (
+        <div className="mt-3 rounded-xl bg-accent p-3 text-sm">
+          <p className="font-bold">{active.store_name}</p>
+          <p className="text-muted-foreground">{active.store_address}</p>
+          <p className="mt-2">Até {new Date(active.ends_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} · <b>faltam {timeLeft(active.ends_at, now)}</b></p>
+          <p className="mt-1">{active.deliveries} {active.deliveries === 1 ? "entrega feita" : "entregas feitas"} · {Number(active.km).toFixed(1)} km</p>
+          <p className="mt-2 text-xs text-muted-foreground">A loja escolhe você nos pedidos dela, e eles aparecem na aba Minhas. O pagamento é combinado direto com a loja.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {active.store_phone && <Button asChild size="sm" variant="outline"><a href={whatsappLink(active.store_phone)} target="_blank" rel="noreferrer">WhatsApp da loja</a></Button>}
+            <Button size="sm" variant="outline" onClick={() => end(active.link_id, active.store_name)}>Encerrar agora</Button>
+          </div>
+        </div>
+      ) : codeLive ? (
+        <div className="mt-3 text-center">
+          <p className="text-sm text-muted-foreground">Passe este código para o dono da loja. Ele digita no app da Loja, em <b>Meus entregadores</b>.</p>
+          <p className="my-3 font-mono text-4xl font-extrabold tracking-[0.3em]">{code.code}</p>
+          <p className="text-xs text-muted-foreground">Vale por mais {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")} e só pode ser usado uma vez.</p>
+          <Button size="sm" variant="ghost" className="mt-2" onClick={make} disabled={busy}>Gerar outro</Button>
+        </div>
+      ) : (
+        <div className="mt-2 text-sm">
+          <p className="text-muted-foreground">Vai trabalhar como entregador próprio de uma loja por algumas horas, dias ou semanas? Gere um código e passe para o dono da loja.</p>
+          <Button className="mt-3" onClick={make} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Gerar código de 6 números"}</Button>
+        </div>
+      )}
+      {past.length > 0 && (
+        <ul className="mt-4 divide-y border-t text-sm">
+          {past.map((l) => <li key={l.link_id} className="flex justify-between gap-2 py-2"><span>{l.store_name} · até {new Date(l.ended_at ?? l.ends_at).toLocaleDateString("pt-BR")}</span><span className="text-muted-foreground">{l.deliveries} entregas · {Number(l.km).toFixed(1)} km</span></li>)}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function CourierForm({ userId, courier }: { userId: string; courier?: Courier }) {

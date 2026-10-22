@@ -19,8 +19,13 @@ export function whatsappRoute(o: OrderLike, phone?: string | null) {
     maps ? `Rota: ${maps}` : "",
     "Peça o PIN de 4 dígitos ao cliente na entrega.",
   ].filter(Boolean).join("\n");
+  return `${whatsappLink(phone)}?text=${encodeURIComponent(msg)}`;
+}
+
+/** wa.me link for a Brazilian phone (adds 55); without a number, WhatsApp asks for the contact. */
+export function whatsappLink(phone?: string | null) {
   const num = phone ? phone.replace(/\D/g, "") : "";
-  return `https://wa.me/${num ? (num.startsWith("55") ? num : `55${num}`) : ""}?text=${encodeURIComponent(msg)}`;
+  return `https://wa.me/${num ? (num.startsWith("55") ? num : `55${num}`) : ""}`;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
