@@ -127,6 +127,9 @@ export const ORDER_STATUS: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
+/** The customer may cancel (with automatic refund) only before the store starts preparing — see /termos. */
+export const CUSTOMER_CANCELLABLE = ["aguardando_pagamento", "pago"];
+
 type LatLng = { lat: number; lng: number };
 /** A geocoding result plus what it matched, so the UI can show "Rua X, Bairro" and flag neighbourhood-only hits. */
 export type GeoHit = LatLng & { label: string; approx: boolean };

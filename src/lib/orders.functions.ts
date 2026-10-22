@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { asaas } from "./asaas.server";
-import { deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitOrder } from "./market";
+import { CUSTOMER_CANCELLABLE, deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitOrder } from "./market";
 
 const Input = z.object({
   storeId: z.string().uuid(),
@@ -121,9 +121,67 @@ export const refreshPayment = createServerFn({ method: "POST" })
     return { status: p.status };
   });
 
+const PAID = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
+
+/**
+ * Undoes the Asaas charge of a cancelled order: refunds it when paid, deletes it while still open
+ * (a deleted Pix QR can no longer be paid). Card installments are refunded/deleted as a whole.
+ * Returns the payment status to store on the order.
+ */
+async function voidPayment(paymentId: string): Promise<string> {
+  const p = await asaas<{ status: string; installment?: string | null }>(`/payments/${paymentId}`);
+  const path = p.installment ? `/installments/${p.installment}` : `/payments/${paymentId}`;
+  const refund = async () => (await asaas<{ status?: string }>(`${path}/refund`, { method: "POST", body: {} })).status ?? "REFUND_REQUESTED";
+  if (PAID.includes(p.status)) return refund();
+  if (["REFUNDED", "REFUND_REQUESTED", "REFUND_IN_PROGRESS", "DELETED"].includes(p.status)) return p.status;
+  try {
+    await asaas(path, { method: "DELETE" });
+    return "DELETED";
+  } catch (e) {
+    // Paid between the read and the delete: refund instead.
+    const again = await asaas<{ status: string }>(`/payments/${paymentId}`);
+    if (!PAID.includes(again.status)) throw e;
+    return refund();
+  }
+}
+
+/** Customer cancels before the store starts preparing; the payment is refunded (or the open charge deleted). */
+export const cancelMyOrder = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ orderId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: order } = await supabaseAdmin.from("orders").select("id,status,asaas_payment_id,customer_id,stores(owner_id)").eq("id", data.orderId).maybeSingle();
+    if (!order || order.customer_id !== context.userId) throw new Error("Pedido não encontrado");
+    if (!CUSTOMER_CANCELLABLE.includes(order.status)) throw new Error("A loja já começou a preparar seu pedido. Fale com a loja pelo chat.");
+    // Claim first (conditional on the status we read), so the store can't start preparing in the meantime.
+    const { data: moved } = await supabaseAdmin.from("orders").update({ status: "cancelado" }).eq("id", order.id).eq("status", order.status).select("id");
+    if (!moved?.length) throw new Error("A situação do pedido acabou de mudar. Atualize a página.");
+    if (order.asaas_payment_id) {
+      try {
+        const payment_status = await voidPayment(order.asaas_payment_id);
+        await supabaseAdmin.from("orders").update({ payment_status }).eq("id", order.id);
+      } catch (e) {
+        console.error("cancelMyOrder: refund failed", order.id, e);
+        await supabaseAdmin.from("orders").update({ status: order.status }).eq("id", order.id).eq("status", "cancelado");
+        throw new Error("Não conseguimos estornar o pagamento agora. Tente de novo em alguns minutos ou fale com a loja.");
+      }
+    }
+    const owner = (order.stores as { owner_id: string | null } | null)?.owner_id;
+    if (order.status === "pago" && owner) {
+      try {
+        const { sendPushToUser } = await import("@/lib/push.server");
+        await sendPushToUser(supabaseAdmin, owner, "❌ Pedido cancelado pelo cliente", `Pedido #${order.id.slice(0, 8)} foi cancelado antes do preparo. O valor foi estornado ao cliente.`, "/painel");
+      } catch (e) {
+        console.error("cancelMyOrder: push failed", order.id, e);
+      }
+    }
+    return { ok: true };
+  });
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function applyPaymentStatus(admin: any, orderId: string, status: string) {
-  const paid = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(status);
+  const paid = PAID.includes(status);
   const failed = ["OVERDUE", "REFUNDED", "CHARGEBACK_REQUESTED", "DELETED"].includes(status);
   const next = paid ? "pago" : failed ? "cancelado" : null;
   // Conditional transition: when webhook and manual refresh race, only one call wins and notifies the store.

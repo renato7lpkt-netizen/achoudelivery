@@ -6,8 +6,8 @@ import { Copy, ExternalLink, RefreshCw, Star, KeyRound, Receipt, CheckCircle2, C
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ORDER_STATUS, brl } from "@/lib/market";
-import { refreshPayment } from "@/lib/orders.functions";
+import { CUSTOMER_CANCELLABLE, ORDER_STATUS, brl } from "@/lib/market";
+import { cancelMyOrder, refreshPayment } from "@/lib/orders.functions";
 import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { PushButton } from "@/components/PushButton";
@@ -44,7 +44,7 @@ function OrderPage() {
     <main className="mx-auto max-w-xl px-4 py-10">
       <p className="text-sm text-muted-foreground">Pedido #{o.id.slice(0, 8)} · {o.stores?.name}</p>
       <h1 className="mt-1 text-3xl font-extrabold">{ORDER_STATUS[o.status] ?? o.status}</h1>
-      <Timeline status={o.status} createdAt={o.created_at} deliveredAt={o.delivered_at} />
+      <Timeline status={o.status} paymentStatus={o.payment_status} createdAt={o.created_at} deliveredAt={o.delivered_at} />
       {pin && ["pago", "preparando", "saiu_entrega"].includes(o.status) && (
         <div className="mt-6 flex items-center gap-4 rounded-2xl border-2 border-primary bg-accent p-4">
           <KeyRound className="h-8 w-8 text-primary" />
@@ -76,6 +76,8 @@ function OrderPage() {
         </Button>
       )}
 
+      {CUSTOMER_CANCELLABLE.includes(o.status) && <CancelButton orderId={o.id} paid={o.status === "pago"} onDone={() => qc.invalidateQueries({ queryKey: ["order", id] })} />}
+
       <div className="mt-6 rounded-2xl border bg-card p-4 text-sm">
         {o.order_items.map((i) => <p key={i.id} className="flex justify-between"><span>{i.qty}× {i.name}{i.options && <span className="block text-xs text-muted-foreground">+ {i.options}</span>}</span><span>{brl(i.qty * Number(i.price))}</span></p>)}
         <div className="mt-3 border-t pt-2">
@@ -98,12 +100,45 @@ const STEPS = [
 ] as const;
 
 /** Vertical iFood-style tracker: done steps filled, current step pulsing, upcoming steps muted. */
-function Timeline({ status, createdAt, deliveredAt }: { status: string; createdAt: string; deliveredAt: string | null }) {
+/** Free cancellation before the store starts preparing (see /termos); the server refunds the payment. */
+function CancelButton({ orderId, paid, onDone }: { orderId: string; paid: boolean; onDone: () => void }) {
+  const cancel = useServerFn(cancelMyOrder);
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    const msg = paid
+      ? "Cancelar o pedido? O valor pago será estornado: no Pix volta na hora; no cartão o estorno aparece na fatura (pode levar até 2 faturas)."
+      : "Cancelar o pedido? A cobrança será desfeita e não poderá mais ser paga.";
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    try {
+      await cancel({ data: { orderId } });
+      toast.success(paid ? "Pedido cancelado. O estorno foi solicitado." : "Pedido cancelado.");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível cancelar", { duration: 9000 });
+      onDone();
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-4 text-center">
+      <Button variant="outline" className="w-full text-destructive" onClick={go} disabled={busy}>
+        <XCircle className="mr-1 h-4 w-4" />{busy ? "Cancelando…" : "Cancelar pedido"}
+      </Button>
+      <p className="mt-1 text-xs text-muted-foreground">Grátis até a loja começar a preparar{paid ? ", com estorno do valor pago" : ""}.</p>
+    </div>
+  );
+}
+
+function Timeline({ status, paymentStatus, createdAt, deliveredAt }: { status: string; paymentStatus: string | null; createdAt: string; deliveredAt: string | null }) {
   if (status === "cancelado") {
+    const refunded = paymentStatus != null && paymentStatus.startsWith("REFUND");
     return (
       <div className="mt-5 flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-destructive">
         <XCircle className="h-6 w-6 shrink-0" />
-        <div><p className="font-bold">Pedido cancelado</p><p className="text-sm">Se você já pagou, entre em contato com a loja para combinar o estorno.</p></div>
+        <div><p className="font-bold">Pedido cancelado</p>
+          <p className="text-sm">{refunded ? "O valor pago foi estornado. No Pix volta na hora; no cartão aparece na fatura."
+            : paymentStatus === "DELETED" ? "A cobrança foi desfeita. Nada foi cobrado."
+            : "Se você já pagou, entre em contato com a loja para combinar o estorno."}</p></div>
       </div>
     );
   }
