@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ExcluirContaRouteImport } from './routes/excluir-conta'
 import { Route as ManifestEntregadorDotwebmanifestRouteImport } from './routes/manifest-entregador[.]webmanifest'
 import { Route as ManifestLojaDotwebmanifestRouteImport } from './routes/manifest-loja[.]webmanifest'
 import { Route as ManifestDotwebmanifestRouteImport } from './routes/manifest[.]webmanifest'
@@ -41,6 +42,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExcluirContaRoute = ExcluirContaRouteImport.update({
+  id: '/excluir-conta',
+  path: '/excluir-conta',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ManifestEntregadorDotwebmanifestRoute =
@@ -131,6 +137,7 @@ const ApiPublicAsaasWebhookRoute = ApiPublicAsaasWebhookRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/excluir-conta': typeof ExcluirContaRoute
   '/manifest-entregador.webmanifest': typeof ManifestEntregadorDotwebmanifestRoute
   '/manifest-loja.webmanifest': typeof ManifestLojaDotwebmanifestRoute
   '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/excluir-conta': typeof ExcluirContaRoute
   '/manifest-entregador.webmanifest': typeof ManifestEntregadorDotwebmanifestRoute
   '/manifest-loja.webmanifest': typeof ManifestLojaDotwebmanifestRoute
   '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/excluir-conta': typeof ExcluirContaRoute
   '/manifest-entregador.webmanifest': typeof ManifestEntregadorDotwebmanifestRoute
   '/manifest-loja.webmanifest': typeof ManifestLojaDotwebmanifestRoute
   '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
@@ -195,6 +204,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/excluir-conta'
     | '/manifest-entregador.webmanifest'
     | '/manifest-loja.webmanifest'
     | '/manifest.webmanifest'
@@ -215,6 +225,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/excluir-conta'
     | '/manifest-entregador.webmanifest'
     | '/manifest-loja.webmanifest'
     | '/manifest.webmanifest'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/excluir-conta'
     | '/manifest-entregador.webmanifest'
     | '/manifest-loja.webmanifest'
     | '/manifest.webmanifest'
@@ -258,6 +270,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ExcluirContaRoute: typeof ExcluirContaRoute
   ManifestEntregadorDotwebmanifestRoute: typeof ManifestEntregadorDotwebmanifestRoute
   ManifestLojaDotwebmanifestRoute: typeof ManifestLojaDotwebmanifestRoute
   ManifestDotwebmanifestRoute: typeof ManifestDotwebmanifestRoute
@@ -290,6 +303,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/excluir-conta': {
+      id: '/excluir-conta'
+      path: '/excluir-conta'
+      fullPath: '/excluir-conta'
+      preLoaderRoute: typeof ExcluirContaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/manifest-entregador.webmanifest': {
@@ -434,6 +454,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ExcluirContaRoute: ExcluirContaRoute,
   ManifestEntregadorDotwebmanifestRoute: ManifestEntregadorDotwebmanifestRoute,
   ManifestLojaDotwebmanifestRoute: ManifestLojaDotwebmanifestRoute,
   ManifestDotwebmanifestRoute: ManifestDotwebmanifestRoute,

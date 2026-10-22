@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
+import { SUPPORT_EMAIL } from "@/lib/contact";
 
 export const Route = createFileRoute("/privacidade")({
   head: () => ({
@@ -63,7 +64,7 @@ function Privacidade() {
 
       <Section title="6. Seus direitos (LGPD)">
         <p>Você pode, a qualquer momento: confirmar quais dados temos sobre você; corrigir dados incompletos ou desatualizados; pedir a exclusão dos seus dados e da sua conta; revogar consentimentos; e pedir a portabilidade dos dados.</p>
-        <p>Para exercer esses direitos, fale conosco pelo e-mail de contato informado no aplicativo ou pelo chat de suporte. Responderemos em até 15 dias.</p>
+        <p>Para exercer esses direitos, escreva para <a href={`mailto:${SUPPORT_EMAIL}`} className="font-semibold text-primary underline">{SUPPORT_EMAIL}</a>. Responderemos em até 15 dias. Para excluir a conta, veja o passo a passo em <Link to="/excluir-conta" className="font-semibold text-primary underline">Excluir conta</Link>.</p>
       </Section>
 
       <Section title="7. Retenção e exclusão">
@@ -71,7 +72,7 @@ function Privacidade() {
       </Section>
 
       <Section title="8. Encarregado de dados (DPO)">
-        <p>O responsável pelo tratamento de dados pessoais no AchouDelivery é a administração da plataforma. Dúvidas sobre esta política podem ser enviadas pelo canal de contato do aplicativo.</p>
+        <p>O responsável pelo tratamento de dados pessoais no AchouDelivery é a administração da plataforma. Dúvidas sobre esta política podem ser enviadas para <a href={`mailto:${SUPPORT_EMAIL}`} className="font-semibold text-primary underline">{SUPPORT_EMAIL}</a>.</p>
       </Section>
 
       <div className="mt-10 border-t pt-6">

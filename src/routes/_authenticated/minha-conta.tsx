@@ -114,6 +114,9 @@ function MyAccount() {
           {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}Salvar
         </Button>
       </form>
+      <p className="mt-8 text-center text-xs text-muted-foreground">
+        <Link to="/privacidade" className="underline">Privacidade</Link> · <Link to="/excluir-conta" className="underline">Excluir minha conta</Link>
+      </p>
     </main>
   );
 }
