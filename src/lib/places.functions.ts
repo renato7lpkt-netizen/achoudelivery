@@ -12,27 +12,37 @@ import { CITY_CENTER, haversineKm, type GeoHit } from "./market";
  */
 const key = () => process.env["TOMTOM_API_KEY"] ?? "";
 const BASE = "https://api.tomtom.com/maps/orbis/places";
-const CITY_RADIUS_M = 30000;
-const inCity = (p: { lat: number; lng: number }) => haversineKm(CITY_CENTER, p) <= CITY_RADIUS_M / 1000;
-const point = { type: "point", coordinates: [CITY_CENTER.lng, CITY_CENTER.lat] };
 const cleanParts = (parts: (string | undefined | null)[]) => parts.filter((s): s is string => !!s && !/^(brasil|brazil)$/i.test(s.trim()));
+
+/**
+ * Where to search: `near` biases results (the order's store at checkout, the customer's saved point elsewhere;
+ * Sete Lagoas when unknown) and `radiusKm`, when set, drops anything farther — so a same-named street in
+ * another city never wins. Without a radius the whole of Brazil is searched.
+ */
+const Area = { near: z.object({ lat: z.number(), lng: z.number() }).optional(), radiusKm: z.number().min(1).max(2000).optional() };
+const center = (near?: { lat: number; lng: number }) => near ?? CITY_CENTER;
 
 export type AddressSuggestion = { label: string };
 
 export const suggestAddress = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ q: z.string().trim().min(3).max(120) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ q: z.string().trim().min(3).max(120), ...Area }).parse(d))
   .handler(async ({ data }): Promise<AddressSuggestion[]> => {
     if (!key()) return [];
+    const c = center(data.near);
+    const coords = [c.lng, c.lat];
     try {
       const res = await fetch(`${BASE}/suggest`, {
         method: "POST",
         headers: { "TomTom-Api-Key": key(), "TomTom-Api-Version": "3", Attributes: "results", "Content-Type": "application/json", "Accept-Language": "pt-BR" },
         body: JSON.stringify({
           query: data.q, maxResults: 6,
-          // circle.center is a bare [lon, lat] array (unlike preferences.geometry, which is a GeoJSON point).
-          filters: { types: ["address", "street", "poi"], countryCodesIso2: ["BR"], geometry: { type: "circle", center: point.coordinates, radiusInMeters: CITY_RADIUS_M } },
-          preferences: { geometry: point },
+          filters: {
+            types: ["address", "street", "poi"], countryCodesIso2: ["BR"],
+            // circle.center is a bare [lon, lat] array (unlike preferences.geometry, which is a GeoJSON point).
+            ...(data.radiusKm ? { geometry: { type: "circle", center: coords, radiusInMeters: Math.round(data.radiusKm * 1000) } } : {}),
+          },
+          preferences: { geometry: { type: "point", coordinates: coords } },
         }),
       });
       if (!res.ok) { console.error("TomTom suggest", res.status, await res.text().catch(() => "")); return []; }
@@ -51,20 +61,21 @@ export const suggestAddress = createServerFn({ method: "POST" })
 /** Address text → starting point for the pin. Not stored as is: the customer confirms it on the map. */
 export const geocodeAddress = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ text: z.string().trim().min(3).max(300) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ text: z.string().trim().min(3).max(300), ...Area }).parse(d))
   .handler(async ({ data }): Promise<GeoHit | null> => {
     if (!key()) return null;
+    const c = center(data.near);
     try {
-      const q = encodeURIComponent(/sete lagoas/i.test(data.text) ? data.text : `${data.text}, Sete Lagoas, MG`);
-      const url = `${BASE}/geocode/${q}.json?key=${key()}&apiVersion=1&countrySet=BR&limit=1&language=pt-BR&lat=${CITY_CENTER.lat}&lon=${CITY_CENTER.lng}&radius=${CITY_RADIUS_M}`;
+      const radius = data.radiusKm ? `&radius=${Math.round(data.radiusKm * 1000)}` : "";
+      const url = `${BASE}/geocode/${encodeURIComponent(data.text)}.json?key=${key()}&apiVersion=1&countrySet=BR&limit=1&language=pt-BR&lat=${c.lat}&lon=${c.lng}${radius}`;
       const res = await fetch(url);
       if (!res.ok) { console.error("TomTom geocode", res.status); return null; }
-      const r = ((await res.json()) as { results?: Array<{ type?: string; position: { lat: number; lon: number }; address?: { streetName?: string; streetNumber?: string; municipalitySubdivision?: string; freeformAddress?: string } }> }).results?.[0];
+      const r = ((await res.json()) as { results?: Array<{ type?: string; position: { lat: number; lon: number }; address?: { streetName?: string; streetNumber?: string; municipalitySubdivision?: string; municipality?: string; freeformAddress?: string } }> }).results?.[0];
       if (!r) return null;
       const p = { lat: r.position.lat, lng: r.position.lon };
-      if (!inCity(p)) return null;
+      if (data.radiusKm && haversineKm(c, p) > data.radiusKm) return null;
       const a = r.address ?? {};
-      const label = cleanParts([a.streetName, a.streetNumber, a.municipalitySubdivision]).join(", ") || a.freeformAddress || data.text;
+      const label = cleanParts([a.streetName, a.streetNumber, a.municipalitySubdivision, a.municipality]).join(", ") || a.freeformAddress || data.text;
       // "Geography" = a neighbourhood/city centroid, not the street.
       return { ...p, label, approx: r.type === "Geography" || !a.streetName };
     } catch (e) {

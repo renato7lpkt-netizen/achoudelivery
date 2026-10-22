@@ -172,7 +172,7 @@ function CreateStore({ userId }: { userId: string }) {
         <fieldset className="grid gap-3 rounded-2xl border bg-card p-4">
           <legend className="px-2 font-bold">3. Endereço e entrega</legend>
           <div><Label>Endereço da loja</Label>
-            <Input required value={f.address} onChange={(e) => { set("address")(e); setPos(null); }} onBlur={() => { if (f.address && !pos && !finding) locate(); }} placeholder="Rua, número, bairro" />
+            <Input required value={f.address} onChange={(e) => { set("address")(e); setPos(null); }} onBlur={() => { if (f.address && !pos && !finding) locate(); }} placeholder="Rua, número, bairro e cidade" />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={locate} disabled={finding}><Search className="mr-1 h-4 w-4" />Buscar endereço</Button>
               <Button type="button" variant="outline" size="sm" onClick={useGps} disabled={finding}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
@@ -490,7 +490,7 @@ function Settings({ store }: { store: Store }) {
         <Input className="mt-2" value={f.cover_url?.startsWith("data:") ? "" : f.cover_url ?? ""} onChange={txt("cover_url")} placeholder="ou cole um link https://…" /></div>
       <div><Label>Telefone</Label><Input value={f.phone ?? ""} onChange={txt("phone")} /></div>
       <div className="md:col-span-2"><Label>Endereço da loja</Label>
-        <Input value={f.address} onChange={(e) => { txt("address")(e); setGeo(null); }} placeholder="Rua, número, bairro" />
+        <Input value={f.address} onChange={(e) => { txt("address")(e); setGeo(null); }} placeholder="Rua, número, bairro e cidade" />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={locate} disabled={finding}><Search className="mr-1 h-4 w-4" />Buscar endereço</Button>
           <Button type="button" variant="outline" size="sm" onClick={useGps} disabled={finding}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>

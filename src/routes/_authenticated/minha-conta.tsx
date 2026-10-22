@@ -34,6 +34,8 @@ function MyAccount() {
   const [locating, setLocating] = useState(false);
   const [found, setFound] = useState<{ label: string; approx: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Search around where this customer already is (saved point), so addresses in any city work.
+  const near = p?.lat != null && p.lng != null ? { near: { lat: p.lat, lng: p.lng } } : {};
 
   useEffect(() => {
     if (!p) return;
@@ -57,7 +59,7 @@ function MyAccount() {
 
   async function pickSuggestion(label: string) {
     setLocating(true);
-    const g = await findAddress(label).catch(() => null);
+    const g = await findAddress(label, near).catch(() => null);
     setLocating(false);
     if (!g) { toast.error("Não achamos esse endereço no mapa. Use sua localização ou confira o nome da rua."); return; }
     setPos({ lat: g.lat, lng: g.lng }); setFound(g);
@@ -70,7 +72,7 @@ function MyAccount() {
     try {
       let geo = pos;
       if (address && !geo) {
-        const g = await findAddress(address).catch(() => null);
+        const g = await findAddress(address, near).catch(() => null);
         if (!g) { toast.error("Não achamos esse endereço em Sete Lagoas. Confira o nome da rua e o bairro."); setBusy(false); return; }
         geo = g; setPos(g); setFound(g);
         if (g.approx) toast.warning("Usamos um ponto aproximado do bairro. Confira o nome da rua.");
@@ -109,7 +111,7 @@ function MyAccount() {
         </div>
         <div className="space-y-2">
           <Label>Endereço de entrega</Label>
-          <AddressInput value={address} onChange={(v) => { setAddress(v); setPos(null); setFound(null); }} onPick={pickSuggestion} />
+          <AddressInput area={near} value={address} onChange={(v) => { setAddress(v); setPos(null); setFound(null); }} onPick={pickSuggestion} />
           <GeoNote label={found?.label} approx={found?.approx} />
           {pos && <PinMap value={pos} onChange={(p) => { setPos(p); setFound({ label: "o ponto que você marcou", approx: false }); }} />}
           <div className="flex items-center gap-2">

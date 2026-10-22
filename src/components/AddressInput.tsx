@@ -2,15 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { suggestAddress, type AddressSuggestion } from "@/lib/places.functions";
+import type { SearchArea } from "@/lib/address";
 
 /**
  * Address field with TomTom suggestions as the customer types (server fn, free monthly tier).
  * Suggestions are only shown, never stored; picking one hands its text to `onPick`, which places the pin.
  * Without a TomTom key the list stays empty and the field works as a plain input.
  */
-export function AddressInput({ id, value, onChange, onPick, onBlur, placeholder = "Rua, número e bairro", required }: {
-  id?: string; value: string; onChange: (v: string) => void; onPick: (label: string) => void; onBlur?: () => void; placeholder?: string; required?: boolean;
+export function AddressInput({ id, value, onChange, onPick, onBlur, area = {}, placeholder = "Rua, número e bairro", required }: {
+  id?: string; value: string; onChange: (v: string) => void; onPick: (label: string) => void; onBlur?: () => void; area?: SearchArea; placeholder?: string; required?: boolean;
 }) {
+  const areaRef = useRef(area);
+  areaRef.current = area;
   const [items, setItems] = useState<AddressSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const typed = useRef(false); // prefilled values (saved address, GPS) must not pop the list
@@ -20,7 +23,7 @@ export function AddressInput({ id, value, onChange, onPick, onBlur, placeholder 
     if (!typed.current || q.length < 4) { setItems([]); setOpen(false); return; }
     const n = ++seq.current;
     const t = setTimeout(async () => {
-      const r = await suggestAddress({ data: { q } }).catch(() => []);
+      const r = await suggestAddress({ data: { q, ...areaRef.current } }).catch(() => []);
       if (n !== seq.current) return; // a newer keystroke already asked
       setItems(r); setOpen(r.length > 0);
     }, 350);

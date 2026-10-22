@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useCart } from "@/lib/cart";
 import { storeQuery } from "@/lib/queries";
 import { FREE_KM_OWN, INSTALLMENT_MIN, brl, deliveryFee, haversineKm, isOpenNow, isStorePaused, maxInstallments } from "@/lib/market";
-import { findAddress } from "@/lib/address";
+import { findAddress, storeArea } from "@/lib/address";
 import { createOrder } from "@/lib/orders.functions";
 import { isValidCpf, maskCpf, maskPhone } from "@/lib/br";
 import { locateMe } from "@/lib/locate";
@@ -59,7 +59,7 @@ function Checkout() {
     if (autoGeo.current || !store || !f.address || pos) return;
     autoGeo.current = true;
     setLocating(true);
-    findAddress(f.address).then((g) => { if (g) { setPos(g); setFound(g); } }).finally(() => setLocating(false));
+    findAddress(f.address, storeArea(store)).then((g) => { if (g) { setPos(g); setFound(g); } }).finally(() => setLocating(false));
   }, [store, f.address, pos]);
 
   if (!cart) return <main className="p-16 text-center"><p>Seu carrinho está vazio.</p><Link to="/" className="text-primary underline">Ver lojas</Link></main>;
@@ -74,7 +74,7 @@ function Checkout() {
     if (!text) { toast.error("Digite o endereço"); return; }
     if (locating) return; // blur + button tap would otherwise search twice
     setLocating(true);
-    const g = await findAddress(text).catch(() => null);
+    const g = await findAddress(text, store ? storeArea(store) : {}).catch(() => null);
     setLocating(false);
     if (!g) { setFound(null); toast.error("Não achamos esse endereço em Sete Lagoas. Confira o nome da rua, tente com o bairro ou o CEP, ou use sua localização."); return; }
     setPos(g); setFound(g);
@@ -176,7 +176,7 @@ function Checkout() {
             <>
               <Label htmlFor="addr">Endereço de entrega</Label>
               <AddressInput id="addr" required value={f.address} onChange={(v) => { setF((prev) => ({ ...prev, address: v })); setPos(null); setFound(null); }}
-                onPick={(label) => locateByAddress(label)} onBlur={() => { if (f.address && !pos) locateByAddress(); }} />
+                area={store ? storeArea(store) : {}} onPick={(label) => locateByAddress(label)} onBlur={() => { if (f.address && !pos) locateByAddress(); }} />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button type="button" variant="secondary" size="sm" onClick={() => locateByAddress()} disabled={locating}>Calcular distância</Button>
                 <Button type="button" variant="outline" size="sm" onClick={locateGps} disabled={locating}><LocateFixed className="mr-1 h-4 w-4" />Usar minha localização</Button>
