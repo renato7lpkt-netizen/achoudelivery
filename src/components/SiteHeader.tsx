@@ -25,13 +25,14 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4">
-        <Link to={area === "loja" ? "/painel" : area === "entregador" ? "/entregador" : "/"} className="flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-hero font-display text-lg font-extrabold text-primary-foreground">A</span>
-          <span className={`font-display text-xl font-extrabold tracking-tight ${badge ? "hidden sm:inline" : ""}`}>AchouDelivery</span>
+        {/* min-w-0 + truncate: with the phone's large-text setting the logo shrinks instead of pushing the page wider */}
+        <Link to={area === "loja" ? "/painel" : area === "entregador" ? "/entregador" : "/"} className="flex min-w-0 items-center gap-2">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-hero font-display text-lg font-extrabold text-primary-foreground">A</span>
+          <span className={`truncate font-display text-xl font-extrabold tracking-tight ${badge ? "hidden sm:inline" : ""}`}>AchouDelivery</span>
           {badge && <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${badge.className}`}>{badge.label}</span>}
         </Link>
         {shopping && <span className="hidden text-xs text-muted-foreground sm:inline">Sete Lagoas · MG</span>}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {user ? (
             <>
               {!shopping && <Button asChild variant="ghost" size="sm"><Link aria-label="Fazer pedidos" to="/"><ShoppingBag className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Comprar</span></Link></Button>}
@@ -52,7 +53,8 @@ export function SiteHeader() {
             </>
           )}
           {shopping && count > 0 && cart && (
-            <Button asChild size="sm" className="ml-1 rounded-full shadow-pop">
+            // Phones already have the CartBar at the bottom; here it only pushed the header off-screen.
+            <Button asChild size="sm" className="ml-1 hidden rounded-full shadow-pop md:inline-flex">
               <Link to="/checkout"><ShoppingBag className="mr-1 h-4 w-4" />{count} · {brl(subtotal)}</Link>
             </Button>
           )}

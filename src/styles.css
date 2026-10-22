@@ -141,6 +141,13 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+
+  /* Safety net: anything wider than the screen (e.g. with Android's large text) must not widen the page,
+     or Chrome stretches the layout and the fixed bottom bars run off the right edge. `clip` keeps sticky working. */
+  html,
+  body {
+    overflow-x: clip;
+  }
 }
 
 /* AchouDelivery — vibrante e apetitoso */
