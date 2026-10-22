@@ -30,7 +30,8 @@ export const suggestAddress = createServerFn({ method: "POST" })
         headers: { "TomTom-Api-Key": key(), "TomTom-Api-Version": "3", Attributes: "results", "Content-Type": "application/json", "Accept-Language": "pt-BR" },
         body: JSON.stringify({
           query: data.q, maxResults: 6,
-          filters: { types: ["address", "street", "poi"], countryCodesIso2: ["BR"], geometry: { type: "circle", center: point, radiusInMeters: CITY_RADIUS_M } },
+          // circle.center is a bare [lon, lat] array (unlike preferences.geometry, which is a GeoJSON point).
+          filters: { types: ["address", "street", "poi"], countryCodesIso2: ["BR"], geometry: { type: "circle", center: point.coordinates, radiusInMeters: CITY_RADIUS_M } },
           preferences: { geometry: point },
         }),
       });
