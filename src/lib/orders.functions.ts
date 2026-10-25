@@ -26,7 +26,16 @@ export const createOrder = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: store } = await supabaseAdmin.from("stores").select("*").eq("id", data.storeId).single();
-    if (!store || !store.is_active) throw new Error("Loja indisponível");
+    if (!store) throw new Error("Loja indisponível");
+    // Hidden stores take no orders, except test stores ordered by an admin (same rule as the
+    // "admins read test stores" policy, migration 0017) so the full flow can be tried.
+    if (!store.is_active) {
+      const [{ data: admin }, { data: testOwner }] = await Promise.all([
+        supabaseAdmin.from("user_roles").select("user_id").eq("user_id", context.userId).eq("role", "admin").maybeSingle(),
+        supabaseAdmin.from("test_accounts").select("user_id").eq("user_id", store.owner_id ?? "").maybeSingle(),
+      ]);
+      if (!admin || !testOwner) throw new Error("Loja indisponível");
+    }
     const { data: hours } = await supabaseAdmin.from("store_hours").select("weekday,opens,closes").eq("store_id", store.id);
     if (!isOpenNow(hours ?? [], isStorePaused(store))) throw new Error("A loja está fechada agora");
 
