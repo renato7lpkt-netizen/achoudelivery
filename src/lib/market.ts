@@ -69,6 +69,39 @@ export function etaMin(store: { prep_time_min: number; rain_mode?: boolean }) {
   return Number(store.prep_time_min) + (store.rain_mode ? RAIN_EXTRA_MIN : 0);
 }
 
+/** City ride incl. stops and the road being longer than the straight line (≈ 20 km/h). */
+export const RIDE_MIN_PER_KM = 3;
+/** Courier reaching the store and taking the bag. */
+export const PICKUP_MIN = 5;
+/** Edits to the delivery point after ordering stay within this distance, so the fee already paid still holds. */
+export const ADDRESS_EDIT_MAX_KM = 0.5;
+
+/**
+ * Delivery window shown on the order page (like "20:25–20:40").
+ * Before the courier leaves: order time + prep (+ rain) + pickup + ride, as a 15-min window.
+ * On the way with live courier GPS: minutes left from the courier to the door, as a 5-min window.
+ * A window already in the past is pushed forward (`late`), never shown as passed.
+ */
+export function deliveryWindow(
+  o: { created_at: string; distance_km: number | null; status: string },
+  store: { prep_time_min: number; rain_mode?: boolean } | null,
+  kmLeft: number | null = null,
+  now = new Date(),
+): { from: Date; to: Date; minutesLeft: number | null; late: boolean } {
+  const at = (min: number) => new Date(now.getTime() + min * 60000);
+  if (o.status === "saiu_entrega" && kmLeft != null) {
+    const left = Math.max(1, Math.ceil(kmLeft * RIDE_MIN_PER_KM));
+    return { from: at(left), to: at(left + 5), minutesLeft: left, late: false };
+  }
+  const ride = Math.ceil(Number(o.distance_km ?? 3) * RIDE_MIN_PER_KM);
+  const prep = store ? etaMin(store) : 30;
+  const from = new Date(new Date(o.created_at).getTime() + (prep + PICKUP_MIN + ride) * 60000);
+  const to = new Date(from.getTime() + 15 * 60000);
+  if (to > now) return { from, to, minutesLeft: null, late: false };
+  const soon = o.status === "saiu_entrega" ? ride : PICKUP_MIN + ride;
+  return { from: at(soon), to: at(soon + 10), minutesLeft: null, late: true };
+}
+
 export function todayWeekday() { return nowInSP().wd; }
 
 // Preço promocional vale se não houver dias definidos ou se hoje estiver na lista

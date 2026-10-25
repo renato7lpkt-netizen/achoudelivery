@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { asaas } from "./asaas.server";
-import { CUSTOMER_CANCELLABLE, deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitOrder } from "./market";
+import { ADDRESS_EDIT_MAX_KM, CUSTOMER_CANCELLABLE, deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitOrder } from "./market";
 
 const Input = z.object({
   storeId: z.string().uuid(),
@@ -174,6 +174,37 @@ export const cancelMyOrder = createServerFn({ method: "POST" })
         await sendPushToUser(supabaseAdmin, owner, "❌ Pedido cancelado pelo cliente", `Pedido #${order.id.slice(0, 8)} foi cancelado antes do preparo. O valor foi estornado ao cliente.`, "/painel");
       } catch (e) {
         console.error("cancelMyOrder: push failed", order.id, e);
+      }
+    }
+    return { ok: true };
+  });
+
+/**
+ * Customer fixes the delivery point (number, gate, wrong pin) before the store starts preparing.
+ * Only small moves (ADDRESS_EDIT_MAX_KM) so the delivery fee already charged still holds;
+ * goes through the service role because orders_guard blocks address edits from the browser.
+ */
+export const updateOrderAddress = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ orderId: z.string().uuid(), address: z.string().trim().min(3).max(300), lat: z.number(), lng: z.number() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: order } = await supabaseAdmin.from("orders").select("id,status,customer_id,lat,lng,stores(owner_id)").eq("id", data.orderId).maybeSingle();
+    if (!order || order.customer_id !== context.userId) throw new Error("Pedido não encontrado");
+    if (!CUSTOMER_CANCELLABLE.includes(order.status)) throw new Error("A loja já começou a preparar. Fale com a loja pelo chat para ajustar o endereço.");
+    if (order.lat != null && order.lng != null && haversineKm({ lat: order.lat, lng: order.lng }, data) > ADDRESS_EDIT_MAX_KM) {
+      throw new Error("O novo ponto ficou longe do endereço do pedido. Para entregar em outro lugar, cancele e faça um novo pedido.");
+    }
+    const { data: moved } = await supabaseAdmin.from("orders").update({ address: data.address, lat: data.lat, lng: data.lng })
+      .eq("id", order.id).in("status", CUSTOMER_CANCELLABLE).select("id");
+    if (!moved?.length) throw new Error("A situação do pedido acabou de mudar. Atualize a página.");
+    const owner = (order.stores as { owner_id: string | null } | null)?.owner_id;
+    if (owner && order.status === "pago") {
+      try {
+        const { sendPushToUser } = await import("@/lib/push.server");
+        await sendPushToUser(supabaseAdmin, owner, "📍 Endereço ajustado pelo cliente", `Pedido #${order.id.slice(0, 8)}: ${data.address}`, "/painel");
+      } catch (e) {
+        console.error("updateOrderAddress: push failed", order.id, e);
       }
     }
     return { ok: true };
