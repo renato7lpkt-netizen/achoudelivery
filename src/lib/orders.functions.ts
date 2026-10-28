@@ -6,7 +6,7 @@ import { ADDRESS_EDIT_MAX_KM, CUSTOMER_CANCELLABLE, STORE_CANCELLABLE, deliveryF
 
 const Input = z.object({
   storeId: z.string().uuid(),
-  items: z.array(z.object({ productId: z.string().uuid(), qty: z.number().int().min(1).max(99), options: z.array(z.string().uuid()).max(20).default([]) })).min(1),
+  items: z.array(z.object({ productId: z.string().uuid(), qty: z.number().int().min(1).max(99), options: z.array(z.string().uuid()).max(20).default([]) })).min(1).max(50),
   fulfillment: z.literal("delivery"),
   name: z.string().trim().min(2).max(100),
   phone: z.string().trim().min(8).max(20),
