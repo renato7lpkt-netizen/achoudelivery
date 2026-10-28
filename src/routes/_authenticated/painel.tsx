@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Trash2, Plus, LocateFixed, Printer, MessageCircle, CloudRain, BellRing, Camera, ImageUp, Search, Loader2, Link2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import { CATEGORIES, FREE_KM_OWN, ORDER_STATUS, WEEKDAYS, brl, isOpenNow, isStorePaused, splitFees } from "@/lib/market";
+import { CATEGORIES, FREE_KM_OWN, ORDER_STATUS, STORE_CANCELLABLE, WEEKDAYS, brl, isOpenNow, isStorePaused, splitFees } from "@/lib/market";
 import { printTicket, whatsappLink, whatsappRoute } from "@/lib/order-tools";
 import { LINK_UNITS, type LinkUnit, isLinkActive, linkMinutes, linkResult, timeLeft } from "@/lib/affiliation";
 import { useNow } from "@/hooks/use-now";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { OrderChat } from "@/components/OrderChat";
 import { PushButton } from "@/components/PushButton";
 import { notifyOrderStatus } from "@/lib/push.functions";
+import { storeCancelOrder } from "@/lib/orders.functions";
 import { ShareLocation } from "@/components/LiveTracking";
 import { compressImage, squareImage } from "@/lib/image";
 import { locateMe } from "@/lib/locate";
@@ -285,6 +286,20 @@ function Orders({ store }: { store: Store }) {
     notifyOrderStatus({ data: { orderId: id } }).catch(() => {});
     qc.invalidateQueries({ queryKey: key });
   }
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  async function cancel(id: string) {
+    if (!window.confirm("Cancelar este pedido? O valor pago será devolvido ao cliente.")) return;
+    setCancelling(id);
+    try {
+      await storeCancelOrder({ data: { orderId: id } });
+      toast.success("Pedido cancelado. O estorno ao cliente foi solicitado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível cancelar");
+    } finally {
+      setCancelling(null);
+      qc.invalidateQueries({ queryKey: key });
+    }
+  }
   const pending = data?.filter((o) => o.status === "pago").length ?? 0;
   useAlarm(pending > 0);
   const [team, setTeam] = useState<Tables<"store_couriers">[]>([]);
@@ -341,7 +356,7 @@ function Orders({ store }: { store: Store }) {
                 <option value="other">Escolher contato</option>
               </select>
             )}
-            {["pago", "preparando"].includes(o.status) && <Button size="sm" variant="outline" onClick={() => move(o.id, "cancelado")}>Cancelar</Button>}
+            {STORE_CANCELLABLE.includes(o.status) && <Button size="sm" variant="outline" disabled={cancelling === o.id} onClick={() => cancel(o.id)}>{cancelling === o.id ? "Cancelando…" : "Cancelar"}</Button>}
             {store.own_couriers && !o.courier_id && o.status === "saiu_entrega" && <ShareLocation orderId={o.id} />}
             {!["aguardando_pagamento", "cancelado"].includes(o.status) && <OrderChat orderId={o.id} role="loja" />}
           </div>

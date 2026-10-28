@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { asaas } from "./asaas.server";
-import { ADDRESS_EDIT_MAX_KM, CUSTOMER_CANCELLABLE, deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitOrder } from "./market";
+import { ADDRESS_EDIT_MAX_KM, CUSTOMER_CANCELLABLE, STORE_CANCELLABLE, deliveryFee, effectivePrice, haversineKm, isOpenNow, isStorePaused, maxInstallments, splitOrder } from "./market";
 
 const Input = z.object({
   storeId: z.string().uuid(),
@@ -184,6 +184,38 @@ export const cancelMyOrder = createServerFn({ method: "POST" })
       } catch (e) {
         console.error("cancelMyOrder: push failed", order.id, e);
       }
+    }
+    return { ok: true };
+  });
+
+/** Store cancels an order it can't fulfil; the payment is refunded like a customer cancel. */
+export const storeCancelOrder = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ orderId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: order } = await supabaseAdmin.from("orders").select("id,status,asaas_payment_id,customer_id,stores(owner_id,name)").eq("id", data.orderId).maybeSingle();
+    const store = order?.stores as { owner_id: string | null; name: string } | null;
+    if (!order || store?.owner_id !== context.userId) throw new Error("Pedido não encontrado");
+    if (!STORE_CANCELLABLE.includes(order.status)) throw new Error("Este pedido não pode mais ser cancelado.");
+    // Claim first (conditional on the status we read), so a courier can't take it out in the meantime.
+    const { data: moved } = await supabaseAdmin.from("orders").update({ status: "cancelado" }).eq("id", order.id).eq("status", order.status).select("id");
+    if (!moved?.length) throw new Error("A situação do pedido acabou de mudar. Atualize a página.");
+    if (order.asaas_payment_id) {
+      try {
+        const payment_status = await voidPayment(order.asaas_payment_id);
+        await supabaseAdmin.from("orders").update({ payment_status }).eq("id", order.id);
+      } catch (e) {
+        console.error("storeCancelOrder: refund failed", order.id, e);
+        await supabaseAdmin.from("orders").update({ status: order.status }).eq("id", order.id).eq("status", "cancelado");
+        throw new Error("Não conseguimos estornar o pagamento agora. O pedido não foi cancelado; tente de novo em alguns minutos.");
+      }
+    }
+    try {
+      const { sendPushToUser } = await import("@/lib/push.server");
+      await sendPushToUser(supabaseAdmin, order.customer_id, `❌ ${store.name} cancelou seu pedido`, "O valor pago será devolvido pelo mesmo meio de pagamento.", `/pedido/${order.id}`);
+    } catch (e) {
+      console.error("storeCancelOrder: push failed", order.id, e);
     }
     return { ok: true };
   });
